@@ -1,6 +1,6 @@
 # SDK Recipes (Codex workspace)
 
-Workspace-level tips to get coding fast. Use `vendor/reachy_mini/` for deeper API reference and `vendor/reachy_mini_conversation_app/` for app patterns (camera/audio threads, shutdown, settings UI).
+Workspace-level tips to get coding fast. Use the upstream `reachy_mini` repo (or your installed package) for API reference and `reachy_mini_conversation_app` for app patterns (camera/audio threads, shutdown, settings UI).
 
 ## Environment + dependencies
 ```bash
@@ -117,6 +117,6 @@ if __name__ == "__main__":
 - `settings_app` is a FastAPI instance you can mount endpoints on (see app templates).
 
 ## Vendor patterns worth copying
-- Camera worker thread with a lock-protected latest-frame buffer (`vendor/reachy_mini_conversation_app/src/.../camera_worker.py`).
-- Audio record/play async loops with resampling and clean shutdown (`vendor/reachy_mini_conversation_app/src/.../console.py`).
+- Camera worker thread with a lock-protected latest-frame buffer (conversation app camera worker).
+- Audio record/play async loops with resampling and clean shutdown (conversation app console).
 - Always stop tasks, then close media, then disconnect the client.

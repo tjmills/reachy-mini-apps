@@ -1,6 +1,6 @@
 # Ask-Codex Prompt Template (Reachy Mini)
 
-Use this repo as context; `vendor/reachy_mini/` and `vendor/reachy_mini_conversation_app/` are read-only references for SDK APIs and app patterns.
+Use this repo as context; for SDK APIs and app patterns, refer to the upstream GitHub repos and PyPI-installed sources.
 
 When you ask Codex for help, include:
 - Task: what to build/run, and whether it is a script or an app (ReachyMiniApp).

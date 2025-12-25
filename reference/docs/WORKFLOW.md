@@ -18,5 +18,5 @@
    - Audio: start recording/playing, then loop `get_audio_sample()` + `push_audio_sample()`.
    - Always stop loops before `media.close()` and `client.disconnect()`.
 7) Provide runnable commands (`uv run python apps/.../main.py`) and quick verification steps (open `http://localhost:8000`, observe motion).
-8) When APIs are unclear, read `vendor/reachy_mini/docs/SDK/*.md`, `vendor/reachy_mini/examples/`, and `vendor/reachy_mini/src/reachy_mini/` before guessing.
+8) When APIs are unclear, read the upstream `reachy_mini` docs/examples/src (or your installed package) before guessing.
 9) For SDK changes or “latest” behavior, search https://github.com/pollen-robotics/reachy_mini (code + issues) and summarize any relevant updates before implementing.

@@ -4,14 +4,14 @@
 - `apps/` holds runnable mini-apps. Each app typically has its own folder (e.g., `apps/hello_motion/`) with a `main.py` entrypoint and an optional `README.md`.
 - `scripts/` contains helper utilities such as `scripts/clone_vendor.py` for pulling a local SDK reference.
 - `reference/` stores project docs and Codex guidance; treat it as reference material rather than runtime code.
-- `vendor/reachy_mini/` is a gitignored clone of the upstream SDK for read-only context.
+- `vendor/` is optional; if you need local SDK sources, use `scripts/clone_vendor.py` to populate a gitignored copy.
 
 ## Build, Test, and Development Commands
 - `uv venv` + `uv sync`: create the virtual environment and install dependencies.
 - `uv sync --extra mujoco`: add simulation extras if you need Mujoco.
 - `uv run python apps/hello_motion/main.py`: run an app directly.
 - `make setup`, `make sync`, `make run-hello`: wrappers for the commands above.
-- `make clone-vendor`: populate `vendor/reachy_mini/` for local reference.
+- `make clone-vendor`: (optional) populate `vendor/` with local SDK references.
 - `make lint`: run Ruff for style and import checks.
 - `make typecheck`: run MyPy over `apps/` and `scripts/`.
 
@@ -25,7 +25,7 @@
 - Only run vendor SDK tests if you explicitly intend to validate the upstream clone.
 
 ## SDK + Vendor Reference Notes (Reachy Mini)
-- Primary API entrypoints live in `vendor/reachy_mini/src/reachy_mini/reachy_mini.py` and `vendor/reachy_mini/src/reachy_mini/__init__.py`.
+- Primary API entrypoints live in the `reachy_mini` package (see upstream repo or PyPI install).
 - `ReachyMini(...)` constructor:
   - Connection: `localhost_only` (LAN needs `False`), `spawn_daemon`, `use_sim`, `timeout`.
   - Motion config: `automatic_body_yaw` (daemon-controlled yaw coupling).
@@ -54,17 +54,17 @@
   - `play_sound("wake_up.wav")` resolves against `reachy_mini/assets` if a relative path is used.
 
 ## App Framework Patterns (SDK)
-- `ReachyMiniApp` (in `vendor/reachy_mini/src/reachy_mini/apps/app.py`) is the standard app base class:
+- `ReachyMiniApp` (from the `reachy_mini` package) is the standard app base class:
   - Override `run(self, reachy_mini, stop_event)`.
   - `wrapped_run()` handles media setup and optional settings webserver.
   - `custom_app_url` + `settings_app` let you mount a small FastAPI settings UI.
   - `request_media_backend` forces a backend; otherwise, wireless defaults to GStreamer.
-- The app templates in `vendor/reachy_mini/src/reachy_mini/apps/templates/` show the expected structure and settings endpoint wiring.
+- The app templates in the upstream repo show the expected structure and settings endpoint wiring.
 
-## Conversation-App Reference Patterns (vendor/reachy_mini_conversation_app)
-- Threaded camera loop with a lock-protected "latest frame" buffer is in `src/reachy_mini_conversation_app/camera_worker.py`.
+## Conversation-App Reference Patterns (reachy_mini_conversation_app repo)
+- Threaded camera loop with a lock-protected "latest frame" buffer (camera worker).
 - Face/head tracking uses `look_at_image(..., perform_movement=False)` to compute a pose and derive offsets without moving the robot; it then smoothly interpolates offsets back to neutral when tracking stops.
-- Audio streaming loops (record + play) use `media.get_audio_sample()` and `media.push_audio_sample()` with resampling to match output rates (`src/reachy_mini_conversation_app/console.py`).
+- Audio streaming loops (record + play) use `media.get_audio_sample()` and `media.push_audio_sample()` with resampling to match output rates.
 - Graceful shutdown pattern: stop threads/tasks first, then `media.close()`, then `client.disconnect()`.
 
 ## Commit & Pull Request Guidelines
@@ -73,7 +73,7 @@
 
 ## Security & Configuration Tips
 - The Reachy Mini daemon must be running (real hardware or simulation) for most SDK calls.
-- Avoid committing the `vendor/reachy_mini/` clone; it is for local reference only.
+- `vendor/` is optional and should remain gitignored if recreated.
 - For “latest” SDK behavior or breaking changes, search https://github.com/pollen-robotics/reachy_mini (including issues) before deciding on an approach.
 
 ## SDK 1.2.4 Remote Media Notes (Wireless)
