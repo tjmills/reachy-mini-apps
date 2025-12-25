@@ -3,14 +3,33 @@ name = "reachy-mini-workspace"
 version = "0.1.0"
 description = "Personal workspace for building apps with the Reachy Mini SDK (pip runtime + local reference clone)."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10, <3.11"
 dependencies = [
-  "ipython>=9.8.0",
-  "reachy-mini>=0.0.0", # loosened; pin after first successful run
+  "huggingface-hub",
+  "ipython",
+  "pillow",
+  "reachy-mini[gstreamer]>=1.2.4",
+  "supervision",
+  "timm",
+  "transformers",
+  "torch<2.3.0",
+  "ultralytics"
 ]
 
 [project.optional-dependencies]
 
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu" },
+]
+torchvision = [
+    { index = "pytorch-cpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.uv]
 # uv will manage the lockfile (uv.lock) after you run `uv sync`.
