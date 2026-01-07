@@ -1,0 +1,50 @@
+[project]
+name = "reachy-mini-hello-motion"
+version = "0.1.0"
+description = "Minimal Reachy Mini hello-motion tutorial (antennas/head/body yaw)."
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+  "numpy>=1.26",
+  "reachy-mini>=1.2.6",
+]
+
+# Extras = your "sections"
+[project.optional-dependencies]
+# Dev tooling (run on your laptop)
+dev = [
+  "ruff>=0.8",
+  "mypy>=1.10",
+  "pytest>=8.0",
+]
+
+# Laptop convenience deps (optional; not needed on the robot)
+# Keep this small—just things you might use while developing locally.
+laptop = [
+  "ipython>=8.0",
+]
+
+# Robot/runtime deps
+# This is the minimal set to run your motion script.
+reachy = [
+]
+
+[tool.uv]
+# uv will manage the lockfile (uv.lock) after you run `uv sync`.
+# (Nothing else required here for this project.)
+
+[tool.ruff]
+line-length = 100
+# Keep lint target aligned with your actual runtime compatibility.
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E203"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+no_implicit_optional = true

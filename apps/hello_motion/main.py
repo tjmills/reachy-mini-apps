@@ -1,17 +1,7 @@
-"""Reachy Mini motion tutorial.
-
-Run this to try several motion patterns and learn the SDK surface:
-- Antenna wiggle (basic `goto_target`)
-- Head sweep (poses via `create_head_pose`)
-- Sinusoidal loops (high-frequency `set_target`)
-
-Tip: For Wireless/LAN robots, set `--localhost-only false` so the client discovers the daemon.
-"""
+"""Basic hello motion app. You can run on laptop or robot since no media backend."""
 
 from __future__ import annotations
 
-import argparse
-from argparse import BooleanOptionalAction
 import time
 
 import numpy as np
@@ -72,30 +62,16 @@ def run_sequence(mini, *, create_head_pose) -> None:
 
     print("Done. Robot should have moved through the tutorial sequence.")
 
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Reachy Mini motion tutorial demo.")
-    parser.add_argument(
-        "--localhost-only",
-        action=BooleanOptionalAction,
-        default=False,
-        help="Require daemon on localhost (add --no-localhost-only for Wireless/LAN discovery).",
-    )
-    return parser.parse_args()
-
-
 def main() -> None:
-    args = parse_args()
-
     # Import inside main so the file can be read without deps installed.
     from reachy_mini import ReachyMini  # type: ignore
     from reachy_mini.utils import create_head_pose  # type: ignore
 
     print(
-        f"Connecting to Reachy Mini (localhost_only={args.localhost_only})..."
+        f"Connecting to Reachy Mini..."
     )
     with ReachyMini(
-        localhost_only=args.localhost_only,
+        media_backend="no_media"
     ) as mini:
         run_sequence(mini, create_head_pose=create_head_pose)
 
