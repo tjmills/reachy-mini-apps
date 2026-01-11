@@ -1,0 +1,10 @@
+{
+  "emeraldwalk.runonsave": {
+    "commands": [
+      {
+        "match": ".*",
+        "cmd": "bash -lc 'DEST=$(basename \"${workspaceFolder}\"); rsync -az --delete --exclude .git --exclude .venv --exclude __pycache__ --exclude .pytest_cache --exclude .ipynb_checkpoints \"${workspaceFolder}/\" pollen@reachy-mini.local:/home/pollen/projects/$DEST/'"
+      }
+    ]
+  }
+}
