@@ -1,7 +1,7 @@
 """
 Simple example to show takign a frame capture with reachy mini. Must be run on the robot
 """
-
+import time
 
 def main() -> None:
 
@@ -11,9 +11,11 @@ def main() -> None:
     with ReachyMini(
         media_backend="default"
     ) as mini:
+        mini.wake_up()
+        time.sleep(1)
         frame = mini.media.get_frame()
-        print(frame)
         cv2.imwrite("./test.png", frame)
+        mini.goto_sleep()
 
 
 if __name__ == "__main__":
