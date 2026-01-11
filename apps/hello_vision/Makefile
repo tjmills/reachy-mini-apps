@@ -10,16 +10,25 @@ PROJECT ?= hello_vision
 run:
 	ssh $(REACHY_HOST) "cd $(REMOTE_BASE)/$(PROJECT) && $(PY_CMD) main.py"
 
-## Sync current workspace folder to the robot (optional convenience)
-## Usage: make sync PROJECT=hello_motion
-sync:
+sync-up:
 	@if [ -z "$(PROJECT)" ]; then \
-		echo "Usage: make sync PROJECT=<project_name>"; \
+		echo "Usage: make sync-up PROJECT=<project_name>"; \
 		exit 1; \
 	fi
 	rsync -az --delete \
 		--exclude .git --exclude .venv --exclude __pycache__ --exclude .pytest_cache --exclude .ipynb_checkpoints \
 		./ $(REACHY_HOST):$(REMOTE_BASE)/$(PROJECT)/
+
+sync-down:
+	@if [ -z "$(PROJECT)" ]; then \
+		echo "Usage: make sync-down PROJECT=<project_name>"; \
+		exit 1; \
+	fi
+	rsync -az --ignore-existing \
+		--exclude .git --exclude .venv --exclude __pycache__ --exclude .pytest_cache --exclude .ipynb_checkpoints \
+		$(REACHY_HOST):$(REMOTE_BASE)/$(PROJECT)/ ./
+
+
 
 ## Tail a log file if you have one (optional; adjust path)
 logs:

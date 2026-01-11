@@ -73,6 +73,7 @@ def main() -> None:
     with ReachyMini(
         media_backend="no_media"
     ) as mini:
+        mini.wake_up()
         run_sequence(mini, create_head_pose=create_head_pose)
 
 

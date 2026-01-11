@@ -13,7 +13,7 @@ def main() -> None:
     ) as mini:
         frame = mini.media.get_frame()
         print(frame)
-        cv2.imwrite("./test", frame)
+        cv2.imwrite("./test.png", frame)
 
 
 if __name__ == "__main__":
