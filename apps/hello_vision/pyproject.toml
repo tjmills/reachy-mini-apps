@@ -1,7 +1,7 @@
 [project]
-name = "reachy-mini-hello-motion"
+name = "reachy-mini-hello-vision"
 version = "0.1.0"
-description = "Minimal Reachy Mini hello-motion tutorial (antennas/head/body yaw)."
+description = "Reachy Mini camera streaming demo."
 readme = "README.md"
 requires-python = ">=3.10,<3.11"
 dependencies = [
