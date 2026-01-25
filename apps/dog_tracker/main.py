@@ -46,10 +46,11 @@ def main() -> None:
 
     # Force correct on-robot media backend
     with ReachyMini(media_backend="gstreamer") as mini:
-        # Bring head out
+        # Bring head out and enable motors
         mini.wake_up()
+        mini.enable_motors()
         time.sleep(1.0)  # let the motion finish + camera settle
-        print("Connected to Reachy Mini")
+        print("Connected to Reachy Mini (motors enabled)")
         time.sleep(1)
 
         # Test frame capture like hello_vision (with retries for camera init)
@@ -129,6 +130,8 @@ def main() -> None:
             print(f"  Center: {detection.center}")
 
             # Draw bounding box on frame and save
+            # Make frame writable (OpenCV may return readonly array)
+            frame = frame.copy()
             x_min, y_min, x_max, y_max = detection.box
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             label_text = f"{detection.label}: {detection.score:.2f}"
@@ -136,6 +139,142 @@ def main() -> None:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             cv2.imwrite("./test_frame_annotated.png", frame)
             print("Saved test_frame_annotated.png with bounding box")
+
+        # Phase 3: Scanning motion test
+        import numpy as np
+        from controller import Controller
+        from reachy_mini.utils import create_head_pose  # type: ignore
+
+        print("\n=== Phase 3: Scanning Motion Test (10 seconds) ===")
+        controller = Controller(config, frame_width, frame_height)
+
+        scan_duration = 10.0
+        scan_start = time.monotonic()
+        last_status = scan_start
+
+        while time.monotonic() - scan_start < scan_duration:
+            yaw, pitch, _ = controller.update(detection=None, detection_age=2.0)
+            # Use SDK set_target with head_pose for continuous control
+            head_pose = create_head_pose(yaw=yaw, pitch=pitch)
+            mini.set_target(head=head_pose)
+
+            # Status every 2 seconds
+            if time.monotonic() - last_status >= 2.0:
+                print(
+                    f"  Mode: {controller.mode.value}, "
+                    f"Yaw: {np.rad2deg(yaw):.1f} deg, "
+                    f"Pitch: {np.rad2deg(pitch):.1f} deg"
+                )
+                last_status = time.monotonic()
+
+            time.sleep(1.0 / config.control_hz)
+
+        print("Phase 3 complete: Scanning motion test finished")
+
+        # Phase 4: Mock tracking test
+        print("\n=== Phase 4: Mock Tracking Test ===")
+
+        mock_positions = [
+            ("CENTER", (640, 360)),
+            ("LEFT", (200, 360)),
+            ("RIGHT", (1080, 360)),
+            ("UP", (640, 150)),
+            ("DOWN", (640, 570)),
+        ]
+
+        for name, (cx, cy) in mock_positions:
+            mock_detection = Detection(
+                label="mock",
+                score=0.99,
+                box=(cx - 50, cy - 50, cx + 50, cy + 50),
+            )
+            print(f"  Testing {name} position ({cx}, {cy})...")
+
+            test_duration = 2.0
+            test_start = time.monotonic()
+            while time.monotonic() - test_start < test_duration:
+                yaw, pitch, _ = controller.update(mock_detection, detection_age=0.0)
+                head_pose = create_head_pose(yaw=yaw, pitch=pitch)
+                mini.set_target(head=head_pose)
+                time.sleep(1.0 / config.control_hz)
+
+            print(f"    Result: Yaw={np.rad2deg(yaw):.1f} deg, Pitch={np.rad2deg(pitch):.1f} deg")
+
+        print("Phase 4 complete: Mock tracking test finished")
+
+        # Phase 5: Full integration test
+        print("\n=== Phase 5: Full Integration Test (30 seconds) ===")
+        print("Robot will scan when no target visible, track when target detected")
+
+        # Reset controller for clean state
+        controller = Controller(config, frame_width, frame_height)
+
+        integration_duration = 30.0
+        integration_start = time.monotonic()
+        last_detection_time = integration_start
+        last_status_time = integration_start
+        current_detection = None
+        detection_interval = 1.0 / config.detection_hz
+
+        while time.monotonic() - integration_start < integration_duration:
+            loop_start = time.monotonic()
+
+            # Run detection at detection_hz
+            if loop_start - last_detection_time >= detection_interval:
+                frame = mini.media.get_frame()
+                if frame is not None:
+                    success, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    if success:
+                        jpeg_bytes = buffer.tobytes()
+                        try:
+                            results = client.object_detection(
+                                jpeg_bytes,
+                                model="facebook/detr-resnet-50",
+                                threshold=config.confidence_threshold,
+                            )
+                            current_detection = None
+                            for r in results:
+                                if r.label and r.label.lower() == config.target_label.lower():
+                                    box = r.box
+                                    current_detection = Detection(
+                                        label=r.label,
+                                        score=r.score,
+                                        box=(
+                                            int(box.xmin),
+                                            int(box.ymin),
+                                            int(box.xmax),
+                                            int(box.ymax),
+                                        ),
+                                    )
+                                    break
+                        except Exception as e:
+                            print(f"  Detection error: {e}")
+                last_detection_time = loop_start
+
+            # Compute detection age
+            detection_age = 0.0 if current_detection else 999.0
+
+            # Update controller
+            yaw, pitch, _ = controller.update(current_detection, detection_age)
+            head_pose = create_head_pose(yaw=yaw, pitch=pitch)
+            mini.set_target(head=head_pose)
+
+            # Status every 3 seconds
+            if loop_start - last_status_time >= 3.0:
+                det_str = f"{current_detection.label}" if current_detection else "None"
+                print(
+                    f"  Mode: {controller.mode.value}, "
+                    f"Detection: {det_str}, "
+                    f"Yaw: {np.rad2deg(yaw):.1f} deg"
+                )
+                last_status_time = loop_start
+
+            # Sleep to maintain control rate
+            elapsed = time.monotonic() - loop_start
+            sleep_time = max(0, (1.0 / config.control_hz) - elapsed)
+            time.sleep(sleep_time)
+
+        print("Phase 5 complete: Integration test finished")
 
         mini.goto_sleep()
         print("Dog Tracker stopped.")
