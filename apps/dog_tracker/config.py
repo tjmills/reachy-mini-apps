@@ -16,7 +16,7 @@ class Config:
     confidence_threshold: float = 0.5
     detection_hz: float = 2.0
     control_hz: float = 30.0
-    lost_timeout: float = 1.5
+    lost_timeout: float = 2.0  # seconds before switching to scanning (accounts for HF latency)
     scan_amplitude_deg: float = 25.0
     scan_period: float = 6.0
 

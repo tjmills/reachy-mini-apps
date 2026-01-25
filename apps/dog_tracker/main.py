@@ -211,7 +211,8 @@ def main() -> None:
 
         integration_duration = 30.0
         integration_start = time.monotonic()
-        last_detection_time = integration_start
+        last_inference_time = 0.0  # When we last ran inference
+        last_valid_detection_time = 0.0  # When we last saw the target
         last_status_time = integration_start
         current_detection = None
         detection_interval = 1.0 / config.detection_hz
@@ -220,10 +221,16 @@ def main() -> None:
             loop_start = time.monotonic()
 
             # Run detection at detection_hz
-            if loop_start - last_detection_time >= detection_interval:
+            if loop_start - last_inference_time >= detection_interval:
                 frame = mini.media.get_frame()
                 if frame is not None:
-                    success, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    # Resize frame to reduce latency
+                    h, w = frame.shape[:2]
+                    scale = 640 / w
+                    small_frame = cv2.resize(frame, (640, int(h * scale)))
+                    success, buffer = cv2.imencode(
+                        ".jpg", small_frame, [cv2.IMWRITE_JPEG_QUALITY, 75]
+                    )
                     if success:
                         jpeg_bytes = buffer.tobytes()
                         try:
@@ -232,27 +239,38 @@ def main() -> None:
                                 model="facebook/detr-resnet-50",
                                 threshold=config.confidence_threshold,
                             )
-                            current_detection = None
+                            # Look for target in results
+                            found_detection = None
                             for r in results:
                                 if r.label and r.label.lower() == config.target_label.lower():
                                     box = r.box
-                                    current_detection = Detection(
+                                    # Scale box back to original frame size
+                                    found_detection = Detection(
                                         label=r.label,
                                         score=r.score,
                                         box=(
-                                            int(box.xmin),
-                                            int(box.ymin),
-                                            int(box.xmax),
-                                            int(box.ymax),
+                                            int(box.xmin / scale),
+                                            int(box.ymin / scale),
+                                            int(box.xmax / scale),
+                                            int(box.ymax / scale),
                                         ),
                                     )
                                     break
+                            # Update detection state
+                            if found_detection is not None:
+                                current_detection = found_detection
+                                last_valid_detection_time = loop_start
+                            # Don't clear current_detection on miss - let age handle it
                         except Exception as e:
                             print(f"  Detection error: {e}")
-                last_detection_time = loop_start
+                last_inference_time = loop_start
 
-            # Compute detection age
-            detection_age = 0.0 if current_detection else 999.0
+            # Compute real detection age from last valid detection
+            detection_age = (
+                (loop_start - last_valid_detection_time)
+                if last_valid_detection_time > 0
+                else 999.0
+            )
 
             # Update controller
             yaw, pitch, _ = controller.update(current_detection, detection_age)
