@@ -27,22 +27,29 @@ class ControllerState:
 
     mode: ControlMode = ControlMode.SCANNING
     scan_start_time: float = field(default_factory=time.monotonic)
-    smoothed_yaw: float = 0.0
-    smoothed_pitch: float = 0.0
+    last_update_time: float = field(default_factory=time.monotonic)
+    current_yaw: float = 0.0
+    current_pitch: float = 0.0
+    target_yaw: float = 0.0
+    target_pitch: float = 0.0
 
 
 class Controller:
     """Head motion controller for tracking and scanning behaviors."""
 
-    # Proportional gains for tracking
-    YAW_KP = 0.025
-    PITCH_KP = 0.020
+    # Proportional gains for tracking (converts pixel error to radians)
+    YAW_KP = 0.002
+    PITCH_KP = 0.002
 
     # Dead band to prevent jitter (pixels from center)
-    DEAD_BAND = 20
+    DEAD_BAND = 30
 
     # EMA smoothing factor (higher = more responsive, lower = smoother)
-    SMOOTHING_ALPHA = 0.7
+    SMOOTHING_ALPHA = 0.15
+
+    # Rate limiting (max radians per second change) for smooth motion
+    MAX_YAW_RATE = np.deg2rad(60)  # 60 deg/sec max
+    MAX_PITCH_RATE = np.deg2rad(40)  # 40 deg/sec max
 
     # Head joint limits (radians)
     YAW_LIMIT = np.deg2rad(45)
@@ -82,6 +89,10 @@ class Controller:
 
     def _tracking_update(self, detection: Detection) -> tuple[float, float, float]:
         """Compute tracking motion to center detection in frame."""
+        now = time.monotonic()
+        dt = now - self.state.last_update_time
+        self.state.last_update_time = now
+
         cx, cy = detection.center
         fx, fy = self.frame_center
 
@@ -96,42 +107,67 @@ class Controller:
             error_y = 0
 
         # Proportional control (negate because yaw left = positive, camera right = positive error)
-        target_yaw = -error_x * self.YAW_KP
-        target_pitch = -error_y * self.PITCH_KP
+        # This gives desired delta from current position
+        raw_target_yaw = self.state.current_yaw - error_x * self.YAW_KP
+        raw_target_pitch = self.state.current_pitch - error_y * self.PITCH_KP
 
-        # EMA smoothing
-        self.state.smoothed_yaw = (
-            self.SMOOTHING_ALPHA * target_yaw
-            + (1 - self.SMOOTHING_ALPHA) * self.state.smoothed_yaw
+        # EMA smoothing on target
+        self.state.target_yaw = (
+            self.SMOOTHING_ALPHA * raw_target_yaw
+            + (1 - self.SMOOTHING_ALPHA) * self.state.target_yaw
         )
-        self.state.smoothed_pitch = (
-            self.SMOOTHING_ALPHA * target_pitch
-            + (1 - self.SMOOTHING_ALPHA) * self.state.smoothed_pitch
+        self.state.target_pitch = (
+            self.SMOOTHING_ALPHA * raw_target_pitch
+            + (1 - self.SMOOTHING_ALPHA) * self.state.target_pitch
         )
+
+        # Rate limiting: move current toward target at max rate
+        max_yaw_delta = self.MAX_YAW_RATE * dt
+        max_pitch_delta = self.MAX_PITCH_RATE * dt
+
+        yaw_diff = self.state.target_yaw - self.state.current_yaw
+        pitch_diff = self.state.target_pitch - self.state.current_pitch
+
+        self.state.current_yaw += np.clip(yaw_diff, -max_yaw_delta, max_yaw_delta)
+        self.state.current_pitch += np.clip(pitch_diff, -max_pitch_delta, max_pitch_delta)
 
         # Clamp to joint limits
-        yaw = np.clip(self.state.smoothed_yaw, -self.YAW_LIMIT, self.YAW_LIMIT)
-        pitch = np.clip(self.state.smoothed_pitch, -self.PITCH_LIMIT, self.PITCH_LIMIT)
+        self.state.current_yaw = np.clip(self.state.current_yaw, -self.YAW_LIMIT, self.YAW_LIMIT)
+        self.state.current_pitch = np.clip(self.state.current_pitch, -self.PITCH_LIMIT, self.PITCH_LIMIT)
 
         # No body rotation during tracking (head only)
-        return float(yaw), float(pitch), 0.0
+        return float(self.state.current_yaw), float(self.state.current_pitch), 0.0
 
     def _scanning_update(self) -> tuple[float, float, float]:
         """Compute scanning motion to sweep the room."""
-        elapsed = time.monotonic() - self.state.scan_start_time
+        now = time.monotonic()
+        dt = now - self.state.last_update_time
+        self.state.last_update_time = now
+
+        elapsed = now - self.state.scan_start_time
         phase = (2 * np.pi * elapsed) / self.config.scan_period
 
         # Sinusoidal yaw sweep
-        yaw = np.deg2rad(self.config.scan_amplitude_deg) * np.sin(phase)
+        target_yaw = np.deg2rad(self.config.scan_amplitude_deg) * np.sin(phase)
 
         # Slight downward pitch to look at floor level (where dogs typically are)
-        pitch = np.deg2rad(5.0)
+        target_pitch = np.deg2rad(5.0)
 
-        # Reset smoothed values during scanning
-        self.state.smoothed_yaw = float(yaw)
-        self.state.smoothed_pitch = float(pitch)
+        # Rate limiting for smooth transition into scanning
+        max_yaw_delta = self.MAX_YAW_RATE * dt
+        max_pitch_delta = self.MAX_PITCH_RATE * dt
 
-        return float(yaw), float(pitch), 0.0
+        yaw_diff = target_yaw - self.state.current_yaw
+        pitch_diff = target_pitch - self.state.current_pitch
+
+        self.state.current_yaw += np.clip(yaw_diff, -max_yaw_delta, max_yaw_delta)
+        self.state.current_pitch += np.clip(pitch_diff, -max_pitch_delta, max_pitch_delta)
+
+        # Update target state for smooth mode transitions
+        self.state.target_yaw = float(target_yaw)
+        self.state.target_pitch = float(target_pitch)
+
+        return float(self.state.current_yaw), float(self.state.current_pitch), 0.0
 
     @property
     def mode(self) -> ControlMode:

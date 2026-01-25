@@ -46,9 +46,9 @@ def main() -> None:
 
     # Force correct on-robot media backend
     with ReachyMini(media_backend="gstreamer") as mini:
-        # Bring head out and enable motors
-        mini.wake_up()
+        # Enable motors FIRST, then wake up
         mini.enable_motors()
+        mini.wake_up()
         time.sleep(1.0)  # let the motion finish + camera settle
         print("Connected to Reachy Mini (motors enabled)")
         time.sleep(1)
@@ -155,7 +155,7 @@ def main() -> None:
         while time.monotonic() - scan_start < scan_duration:
             yaw, pitch, _ = controller.update(detection=None, detection_age=2.0)
             # Use SDK set_target with head_pose for continuous control
-            head_pose = create_head_pose(yaw=yaw, pitch=pitch)
+            head_pose = create_head_pose(yaw=yaw, pitch=pitch, degrees=False)
             mini.set_target(head=head_pose)
 
             # Status every 2 seconds
@@ -194,7 +194,7 @@ def main() -> None:
             test_start = time.monotonic()
             while time.monotonic() - test_start < test_duration:
                 yaw, pitch, _ = controller.update(mock_detection, detection_age=0.0)
-                head_pose = create_head_pose(yaw=yaw, pitch=pitch)
+                head_pose = create_head_pose(yaw=yaw, pitch=pitch, degrees=False)
                 mini.set_target(head=head_pose)
                 time.sleep(1.0 / config.control_hz)
 
@@ -256,7 +256,7 @@ def main() -> None:
 
             # Update controller
             yaw, pitch, _ = controller.update(current_detection, detection_age)
-            head_pose = create_head_pose(yaw=yaw, pitch=pitch)
+            head_pose = create_head_pose(yaw=yaw, pitch=pitch, degrees=False)
             mini.set_target(head=head_pose)
 
             # Status every 3 seconds
