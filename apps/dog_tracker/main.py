@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 
 
@@ -73,13 +72,46 @@ def main() -> None:
         print("Saved test_frame.png")
 
         # Phase 2: Test object detection on captured frame
-        from detector import Detector, Detection
+        from huggingface_hub import InferenceClient
 
         print("\nTesting object detection...")
-        detector = Detector(config)
+        client = InferenceClient(token=config.hf_token)
 
-        # Run detection directly (bypass async task mechanism for this test)
-        detection = asyncio.run(detector._detect_async(frame))
+        # Encode frame as JPEG
+        success, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if not success:
+            print("ERROR: Failed to encode frame as JPEG")
+            mini.goto_sleep()
+            return
+        jpeg_bytes = buffer.tobytes()
+        print(f"  Encoded frame: {len(jpeg_bytes)} bytes")
+
+        # Run detection (uses default DETR model)
+        try:
+            results = client.object_detection(jpeg_bytes)
+            print(f"  Raw API results: {len(results)} objects detected")
+            for i, r in enumerate(results[:5]):  # Show first 5
+                print(f"    [{i}] label={r.label}, score={r.score:.2f}, box={r.box}")
+        except Exception as e:
+            print(f"ERROR: Object detection failed: {e}")
+            mini.goto_sleep()
+            return
+
+        # Filter for target
+        from detector import Detection
+        detection = None
+        for result in results:
+            if result.label is None:
+                continue
+            if (result.label.lower() == config.target_label.lower()
+                    and result.score >= config.confidence_threshold):
+                box = result.box
+                detection = Detection(
+                    label=result.label,
+                    score=result.score,
+                    box=(int(box.xmin), int(box.ymin), int(box.xmax), int(box.ymax)),
+                )
+                break  # Take first match
 
         if detection is None:
             print(f"No '{config.target_label}' detected in frame")

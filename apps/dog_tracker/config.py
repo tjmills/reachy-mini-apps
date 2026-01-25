@@ -11,7 +11,7 @@ class Config:
     """Dog tracker configuration loaded from environment variables."""
 
     hf_token: str
-    model: str = "facebook/detr-resnet-50"
+    model: str = "hustvl/yolos-tiny"
     target_label: str = "dog"
     confidence_threshold: float = 0.5
     detection_hz: float = 2.0
@@ -29,7 +29,7 @@ class Config:
 
         return cls(
             hf_token=hf_token,
-            model=os.environ.get("DOG_TRACKER_MODEL", "facebook/detr-resnet-50"),
+            model=os.environ.get("DOG_TRACKER_MODEL", "hustvl/yolos-tiny"),
             target_label=os.environ.get("DOG_TRACKER_LABEL", "dog"),
             confidence_threshold=float(os.environ.get("DOG_TRACKER_CONF", "0.5")),
             detection_hz=float(os.environ.get("DOG_TRACKER_HZ", "2.0")),
