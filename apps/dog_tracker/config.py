@@ -19,6 +19,7 @@ class Config:
     lost_timeout: float = 2.0  # seconds before switching to scanning (accounts for HF latency)
     scan_amplitude_deg: float = 25.0
     scan_period: float = 6.0
+    endpoint_url: str | None = None  # HF Inference Endpoint URL (optional, for lower latency)
 
     @classmethod
     def from_env(cls) -> Config:
@@ -33,4 +34,5 @@ class Config:
             target_label=os.environ.get("DOG_TRACKER_LABEL", "dog"),
             confidence_threshold=float(os.environ.get("DOG_TRACKER_CONF", "0.5")),
             detection_hz=float(os.environ.get("DOG_TRACKER_HZ", "2.0")),
+            endpoint_url=os.environ.get("DOG_TRACKER_ENDPOINT_URL"),
         )

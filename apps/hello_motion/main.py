@@ -71,6 +71,7 @@ def main() -> None:
 
     print("Connecting to Reachy Mini (on-robot)...")
     with ReachyMini() as mini:
+        mini.enable_motors()
         mini.wake_up()
         time.sleep(0.5)
 
