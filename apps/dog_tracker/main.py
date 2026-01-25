@@ -93,7 +93,7 @@ def main() -> None:
         try:
             results = client.object_detection(
                 jpeg_bytes,
-                model="facebook/detr-resnet-50",
+                model=config.model,
                 threshold=config.confidence_threshold,
             )
             print(f"  Raw API results: {len(results)} objects detected")
@@ -212,10 +212,15 @@ def main() -> None:
         integration_duration = 30.0
         integration_start = time.monotonic()
         last_inference_time = 0.0  # When we last ran inference
-        last_valid_detection_time = 0.0  # When we last saw the target
+        last_good_frame_time = 0.0  # Frame capture time of last valid detection
         last_status_time = integration_start
         current_detection = None
         detection_interval = 1.0 / config.detection_hz
+        consecutive_misses = 0  # Hysteresis counter
+
+        # Stale detection threshold - discard results older than this
+        # Note: HF serverless can be slow (2-10s), adjust based on observed latency
+        max_detection_age = 3.0  # seconds
 
         while time.monotonic() - integration_start < integration_duration:
             loop_start = time.monotonic()
@@ -224,6 +229,9 @@ def main() -> None:
             if loop_start - last_inference_time >= detection_interval:
                 frame = mini.media.get_frame()
                 if frame is not None:
+                    # Timestamp when frame was captured (before inference)
+                    frame_capture_time = time.monotonic()
+
                     # Resize frame to reduce latency
                     h, w = frame.shape[:2]
                     scale = 640 / w
@@ -236,44 +244,57 @@ def main() -> None:
                         try:
                             results = client.object_detection(
                                 jpeg_bytes,
-                                model="facebook/detr-resnet-50",
+                                model=config.model,
                                 threshold=config.confidence_threshold,
                             )
-                            # Look for target in results
-                            found_detection = None
-                            for r in results:
-                                if r.label and r.label.lower() == config.target_label.lower():
-                                    box = r.box
-                                    # Scale box back to original frame size
-                                    found_detection = Detection(
-                                        label=r.label,
-                                        score=r.score,
-                                        box=(
-                                            int(box.xmin / scale),
-                                            int(box.ymin / scale),
-                                            int(box.xmax / scale),
-                                            int(box.ymax / scale),
-                                        ),
-                                    )
-                                    break
-                            # Update detection state
-                            if found_detection is not None:
-                                current_detection = found_detection
-                                last_valid_detection_time = loop_start
-                            # Don't clear current_detection on miss - let age handle it
+                            receipt_time = time.monotonic()
+                            age_at_receipt = receipt_time - frame_capture_time
+
+                            # Discard stale results (inference took too long)
+                            if age_at_receipt > max_detection_age:
+                                print(f"  Discarding stale detection ({age_at_receipt:.1f}s > {max_detection_age}s)")
+                            else:
+                                # Look for target in results
+                                found_detection = None
+                                for r in results:
+                                    if r.label and r.label.lower() == config.target_label.lower():
+                                        box = r.box
+                                        # Scale box back to original frame size
+                                        found_detection = Detection(
+                                            label=r.label,
+                                            score=r.score,
+                                            box=(
+                                                int(box.xmin / scale),
+                                                int(box.ymin / scale),
+                                                int(box.xmax / scale),
+                                                int(box.ymax / scale),
+                                            ),
+                                        )
+                                        break
+
+                                # Update detection state
+                                if found_detection is not None:
+                                    current_detection = found_detection
+                                    last_good_frame_time = frame_capture_time
+                                    consecutive_misses = 0
+                                else:
+                                    consecutive_misses += 1
                         except Exception as e:
                             print(f"  Detection error: {e}")
+                            consecutive_misses += 1
                 last_inference_time = loop_start
 
-            # Compute real detection age from last valid detection
+            # Compute detection age based on when frame was captured (not receipt time)
             detection_age = (
-                (loop_start - last_valid_detection_time)
-                if last_valid_detection_time > 0
+                (loop_start - last_good_frame_time)
+                if last_good_frame_time > 0
                 else 999.0
             )
 
-            # Update controller
-            yaw, pitch, _ = controller.update(current_detection, detection_age)
+            # Update controller (hysteresis: need 3+ misses before age matters for scanning)
+            # This prevents "track → scan → track" flicker
+            effective_age = detection_age if consecutive_misses >= 3 else min(detection_age, 0.5)
+            yaw, pitch, _ = controller.update(current_detection, effective_age)
             head_pose = create_head_pose(yaw=yaw, pitch=pitch, degrees=False)
             mini.set_target(head=head_pose)
 
@@ -283,6 +304,7 @@ def main() -> None:
                 print(
                     f"  Mode: {controller.mode.value}, "
                     f"Detection: {det_str}, "
+                    f"Age: {detection_age:.1f}s, "
                     f"Yaw: {np.rad2deg(yaw):.1f} deg"
                 )
                 last_status_time = loop_start
