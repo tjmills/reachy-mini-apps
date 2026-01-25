@@ -75,8 +75,10 @@ def main() -> None:
         from huggingface_hub import InferenceClient
 
         print("\nTesting object detection...")
-        client = InferenceClient(token=config.hf_token)
-
+        client = InferenceClient(
+            provider="hf-inference",
+            token=config.hf_token,
+        )
         # Encode frame as JPEG
         success, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if not success:
@@ -88,7 +90,11 @@ def main() -> None:
 
         # Run detection (uses default DETR model)
         try:
-            results = client.object_detection(jpeg_bytes)
+            results = client.object_detection(
+                jpeg_bytes,
+                model="facebook/detr-resnet-50",
+                threshold=config.confidence_threshold,
+            )
             print(f"  Raw API results: {len(results)} objects detected")
             for i, r in enumerate(results[:5]):  # Show first 5
                 print(f"    [{i}] label={r.label}, score={r.score:.2f}, box={r.box}")

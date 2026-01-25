@@ -4,7 +4,7 @@ REMOTE_BASE ?= /home/pollen/projects
 PY_CMD ?= /opt/uv/uv run python
 PROJECT ?= dog_tracker
 # ---- Targets ----
-.PHONY: run sync logs
+.PHONY: run sync logs verify-sync
 
 ## Run main.py on the robot for the given project
 run:
@@ -15,9 +15,18 @@ sync-up:
 		echo "Usage: make sync-up PROJECT=<project_name>"; \
 		exit 1; \
 	fi
-	rsync -az --delete \
+	rsync -avz --delete \
 		--exclude .git --exclude .venv --exclude __pycache__ --exclude .pytest_cache --exclude .ipynb_checkpoints \
 		./ $(REACHY_HOST):$(REMOTE_BASE)/$(PROJECT)/
+	@echo "--- Verifying sync (first 5 lines of remote main.py) ---"
+	@ssh $(REACHY_HOST) "head -5 $(REMOTE_BASE)/$(PROJECT)/main.py"
+
+verify-sync:
+	@echo "=== LOCAL main.py (line 75-80) ==="
+	@sed -n '75,80p' main.py
+	@echo ""
+	@echo "=== REMOTE main.py (line 75-80) ==="
+	@ssh $(REACHY_HOST) "sed -n '75,80p' $(REMOTE_BASE)/$(PROJECT)/main.py"
 
 sync-down:
 	@if [ -z "$(PROJECT)" ]; then \
