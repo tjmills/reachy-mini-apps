@@ -1,4 +1,4 @@
-"""Basic hello motion app. You can run on laptop or robot since no media backend."""
+"""Basic hello motion app (Wireless). Run on the robot (SSH/embedded app)."""
 
 from __future__ import annotations
 
@@ -23,7 +23,8 @@ def head_sweep(mini, *, create_head_pose) -> None:
         create_head_pose(z=0, roll=0, pitch=0, degrees=True, mm=True),
     ]
     for pose in poses:
-        mini.goto_target(head=pose, duration=1.2, method="minjerk")
+        # NOTE: current SDK uses positional head pose for goto_target (see minimal demo)
+        mini.goto_target(pose, duration=1.2, method="minjerk")
 
 
 def sinusoidal_track(
@@ -43,8 +44,9 @@ def sinusoidal_track(
         phase = 2 * np.pi * (t / period)
         antenna_val = np.deg2rad(antenna_deg) * np.sin(phase * 2)
         body_yaw_val = np.deg2rad(body_yaw_deg) * np.sin(phase)
+
         mini.set_target(
-            antennas=[antenna_val, -antenna_val],
+            antennas=(antenna_val, -antenna_val),
             body_yaw=body_yaw_val,
         )
         time.sleep(dt)
@@ -62,19 +64,21 @@ def run_sequence(mini, *, create_head_pose) -> None:
 
     print("Done. Robot should have moved through the tutorial sequence.")
 
+
 def main() -> None:
-    # Import inside main so the file can be read without deps installed.
     from reachy_mini import ReachyMini  # type: ignore
     from reachy_mini.utils import create_head_pose  # type: ignore
 
-    print(
-        f"Connecting to Reachy Mini..."
-    )
-    with ReachyMini(
-        media_backend="no_media"
-    ) as mini:
+    print("Connecting to Reachy Mini (on-robot)...")
+    with ReachyMini() as mini:
         mini.wake_up()
-        run_sequence(mini, create_head_pose=create_head_pose)
+        time.sleep(0.5)
+
+        try:
+            run_sequence(mini, create_head_pose=create_head_pose)
+        finally:
+            # leave the robot in a clean state even on Ctrl+C / exceptions
+            mini.goto_sleep()
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ PROJECT ?= dog_tracker
 
 ## Run main.py on the robot for the given project
 run:
-	ssh $(REACHY_HOST) "cd $(REMOTE_BASE)/$(PROJECT) && $(PY_CMD) main.py"
+	ssh $(REACHY_HOST) "cd $(REMOTE_BASE)/$(PROJECT) && set -a && . ./.env && set +a && $(PY_CMD) main.py"
 
 sync-up:
 	@if [ -z "$(PROJECT)" ]; then \

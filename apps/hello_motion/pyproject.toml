@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10,<3.11"
 dependencies = [
   "numpy>=1.26",
-  "reachy-mini>=1.2.6",
+  "reachy-mini>=1.2.13",
 ]
 
 # Extras = your "sections"

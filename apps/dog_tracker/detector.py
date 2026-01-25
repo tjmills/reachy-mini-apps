@@ -66,6 +66,9 @@ class Detector:
         # Filter for target label with sufficient confidence
         detections = []
         for result in results:
+            # Skip results with missing label
+            if result.label is None:
+                continue
             if (
                 result.label.lower() == self.config.target_label.lower()
                 and result.score >= self.config.confidence_threshold
