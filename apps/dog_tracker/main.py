@@ -2,7 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
+
+
+def test_hf_connection(config) -> bool:
+    """Test HuggingFace API connection (Phase 1)."""
+    from huggingface_hub import HfApi
+
+    try:
+        print("Testing HuggingFace API connection...")
+        api = HfApi(token=config.hf_token)
+        # Verify token by getting user info
+        user_info = api.whoami()
+        print(f"HF API connection successful!")
+        print(f"  Authenticated as: {user_info.get('name', user_info.get('id', 'unknown'))}")
+        # Verify model exists
+        model_info = api.model_info(config.model)
+        print(f"  Model verified: {model_info.id}")
+        return True
+    except Exception as e:
+        print(f"HF API connection FAILED: {e}")
+        return False
 
 
 def main() -> None:
@@ -19,9 +40,16 @@ def main() -> None:
     print(f"  Model: {config.model}")
     print(f"  Target: {config.target_label} (conf >= {config.confidence_threshold})")
 
+    # Phase 1: Test HF API connection
+    if not test_hf_connection(config):
+        print("Aborting: Cannot connect to HuggingFace API")
+        return
+
     # Force correct on-robot media backend
     with ReachyMini(media_backend="gstreamer") as mini:
+        # Bring head out
         mini.wake_up()
+        time.sleep(1.0)  # let the motion finish + camera settle
         print("Connected to Reachy Mini")
         time.sleep(1)
 
@@ -36,11 +64,40 @@ def main() -> None:
 
         if frame is None:
             print("ERROR: Could not capture frame from camera")
+            mini.goto_sleep()
+            return
+
+        frame_height, frame_width = frame.shape[:2]
+        print(f"Camera resolution: {frame_width}x{frame_height}")
+        cv2.imwrite("./test_frame.png", frame)
+        print("Saved test_frame.png")
+
+        # Phase 2: Test object detection on captured frame
+        from detector import Detector, Detection
+
+        print("\nTesting object detection...")
+        detector = Detector(config)
+
+        # Run detection directly (bypass async task mechanism for this test)
+        detection = asyncio.run(detector._detect_async(frame))
+
+        if detection is None:
+            print(f"No '{config.target_label}' detected in frame")
         else:
-            frame_height, frame_width = frame.shape[:2]
-            print(f"Camera resolution: {frame_width}x{frame_height}")
-            cv2.imwrite("./test_frame.png", frame)
-            print("Saved test_frame.png")
+            print(f"Detection successful!")
+            print(f"  Label: {detection.label}")
+            print(f"  Confidence: {detection.score:.2f}")
+            print(f"  Bounding box: {detection.box}")
+            print(f"  Center: {detection.center}")
+
+            # Draw bounding box on frame and save
+            x_min, y_min, x_max, y_max = detection.box
+            cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+            label_text = f"{detection.label}: {detection.score:.2f}"
+            cv2.putText(frame, label_text, (x_min, y_min - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.imwrite("./test_frame_annotated.png", frame)
+            print("Saved test_frame_annotated.png with bounding box")
 
         mini.goto_sleep()
         print("Dog Tracker stopped.")
