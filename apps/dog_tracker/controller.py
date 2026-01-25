@@ -45,7 +45,7 @@ class Controller:
     DEAD_BAND = 30
 
     # EMA smoothing factor (higher = more responsive, lower = smoother)
-    SMOOTHING_ALPHA = 0.15
+    SMOOTHING_ALPHA = 0.4
 
     # Rate limiting (max radians per second change) for smooth motion
     MAX_YAW_RATE = np.deg2rad(60)  # 60 deg/sec max
@@ -109,7 +109,7 @@ class Controller:
         # Proportional control (negate because yaw left = positive, camera right = positive error)
         # This gives desired delta from current position
         raw_target_yaw = self.state.current_yaw - error_x * self.YAW_KP
-        raw_target_pitch = self.state.current_pitch - error_y * self.PITCH_KP
+        raw_target_pitch = self.state.current_pitch + error_y * self.PITCH_KP
 
         # EMA smoothing on target
         self.state.target_yaw = (
