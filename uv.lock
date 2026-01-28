@@ -1532,7 +1532,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "reachy-mini", specifier = ">=1.2.6" },
+    { name = "reachy-mini", specifier = ">=1.2.13" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
 ]
 provides-extras = ["dev", "laptop", "reachy"]
@@ -1564,7 +1564,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "opencv-python" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "reachy-mini", extras = ["gstreamer"], specifier = ">=1.2.6" },
+    { name = "reachy-mini", extras = ["gstreamer"], specifier = ">=1.2.13" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
 ]
 provides-extras = ["dev", "laptop", "reachy"]
