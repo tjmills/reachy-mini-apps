@@ -1,6 +1,6 @@
 """Dog tracker app for Reachy Mini using remote HuggingFace inference.
 
-Scans the room and reacts with configurable emotion + beep when target detected.
+Scans the room and reacts with a recorded emotion when target detected.
 """
 
 from __future__ import annotations
@@ -28,18 +28,37 @@ class DetResult:
     box: Box
 
 
-def run_endpoint_detection(endpoint_url: str, token: str, jpeg_bytes: bytes) -> list[DetResult]:
-    """Run object detection on a dedicated HF endpoint."""
+def run_endpoint_detection(
+    endpoint_url: str,
+    token: str,
+    jpeg_bytes: bytes,
+    max_retries: int = 12,
+    initial_wait: float = 5.0,
+) -> list[DetResult]:
+    """Run object detection on a dedicated HF endpoint.
+
+    Retries on 503 (endpoint scaling up from zero) with exponential backoff,
+    capped at 30s between attempts. Default 12 retries ≈ ~3 min total wait.
+    """
     import requests
-    resp = requests.post(
-        endpoint_url,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "image/jpeg",
-        },
-        data=jpeg_bytes,
-    )
-    resp.raise_for_status()
+
+    wait = initial_wait
+    for attempt in range(max_retries + 1):
+        resp = requests.post(
+            endpoint_url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "image/jpeg",
+            },
+            data=jpeg_bytes,
+        )
+        if resp.status_code != 503 or attempt == max_retries:
+            resp.raise_for_status()
+            break
+        print(f"  Endpoint waking up... retry {attempt + 1}/{max_retries} in {wait:.0f}s")
+        time.sleep(wait)
+        wait = min(wait * 1.5, 30.0)
+
     raw_results = resp.json()
     return [
         DetResult(
@@ -69,17 +88,6 @@ def test_hf_connection(config) -> bool:
     except Exception as e:
         print(f"HF API connection FAILED: {e}")
         return False
-
-
-def play_beep(mini, frequency_hz: int, duration: float) -> None:
-    """Play a simple sine wave beep through the robot's speaker."""
-    sr = 16000
-    t = np.arange(int(sr * duration)) / sr
-    samples = (np.sin(2 * np.pi * frequency_hz * t) * 0.5).astype(np.float32)
-    mini.media.start_playing()
-    mini.media.push_audio_sample(samples)
-    time.sleep(duration + 0.1)
-    mini.media.stop_playing()
 
 
 def main() -> None:
@@ -208,11 +216,22 @@ def main() -> None:
 
         # Continuous scan + react loop
         from controller import Controller
-        from emotions import play_emotion
+        from reachy_mini.motion.recorded_move import RecordedMoves  # type: ignore
         from reachy_mini.utils import create_head_pose  # type: ignore
 
+        EMOTIONS_DATASET = "pollen-robotics/reachy-mini-emotions-library"
+        print(f"\nLoading emotions from {EMOTIONS_DATASET}...")
+        emotions = RecordedMoves(EMOTIONS_DATASET)
+
+        available = emotions.list_moves()
+        if config.reaction_emotion not in available:
+            print(f"ERROR: Emotion '{config.reaction_emotion}' not found in dataset.")
+            print(f"  Available: {', '.join(sorted(available))}")
+            mini.goto_sleep()
+            return
+
         print(f"\n=== Scanning for '{config.target_label}' (Ctrl+C to stop) ===")
-        print(f"  Reaction: {config.reaction_emotion} emotion + {config.reaction_sound_hz}Hz beep")
+        print(f"  Reaction: {config.reaction_emotion} emotion")
         print(f"  Scan-only after reaction: {config.scan_only_duration}s")
 
         controller = Controller(config, frame_width, frame_height)
@@ -312,9 +331,14 @@ def main() -> None:
                 if reaction_triggered:
                     last_reaction_time = loop_start
                     print(f"  Reacting: {config.reaction_emotion}!")
-                    play_emotion(mini, config.reaction_emotion)
-                    play_beep(mini, config.reaction_sound_hz, config.reaction_sound_duration)
-                    time.sleep(0.5)
+                    sound = emotions.sounds.get(config.reaction_emotion)
+                    if sound is not None:
+                        try:
+                            mini.media.play_sound(sound)
+                        except Exception as e:
+                            print(f"  (sound failed, continuing) {e}")
+                    move = emotions.get(config.reaction_emotion)
+                    mini.play_move(move, initial_goto_duration=1.0)
                     controller.resume_scanning()
                     detection_paused = True
                     current_detection = None
