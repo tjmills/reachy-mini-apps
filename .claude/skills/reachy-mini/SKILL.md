@@ -10,3 +10,4 @@ Rules:
 - Prefer goto_target for gestures, set_target for loops.
 - Use media_backend="no_media" for motion-only scripts.
 - Lite/Sim requires daemon; verify at http://localhost:8000.
+- For emotions: prefer RecordedMoves for apps with sound; hand-crafted for custom behaviors/learning.

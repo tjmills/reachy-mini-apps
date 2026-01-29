@@ -1,6 +1,61 @@
 # Emotions for Reachy Mini
 
-Reachy Mini expresses emotions through motion patterns. The SDK has no built-in emotion classes - emotions are created by combining antenna positions, head poses, and body rotation.
+Reachy Mini expresses emotions through motion patterns. There are two approaches:
+
+## Two Approaches
+
+| | Hand-Crafted | Pre-Recorded (RecordedMoves) |
+|---|---|---|
+| **How** | Custom Python functions using `goto_target()` | Load trajectories + sounds from HuggingFace dataset |
+| **Sound** | No sound | Optional `.wav` per emotion |
+| **Customization** | Full control (intensity, duration, sequences) | Play as-is, adjust `initial_goto_duration` |
+| **Count** | ~15 emotions (you write them) | 30+ emotions from dataset |
+| **Best for** | Learning the SDK, custom behaviors | Apps that need sound, quick prototyping |
+
+---
+
+## Pre-Recorded Emotions (RecordedMoves)
+
+The SDK's `RecordedMoves` class loads emotion trajectories and sounds from a HuggingFace dataset.
+
+### Loading and Listing
+
+```python
+from reachy_mini.motion.recorded_move import RecordedMoves
+
+emotions = RecordedMoves("pollen-robotics/reachy-mini-emotions-library")
+print(emotions.list_moves())  # all available emotion names
+```
+
+### Playing Emotions
+
+```python
+# Play a motion trajectory
+move = emotions.get("curious1")
+mini.play_move(move, initial_goto_duration=1.0)
+
+# Play the associated sound (if present)
+sound = emotions.sounds.get("curious1")
+if sound is not None:
+    mini.media.play_sound(sound)
+```
+
+The `initial_goto_duration` parameter controls how many seconds the robot takes to smoothly move into the first pose of the recorded trajectory before playback begins.
+
+### Available Emotion Names (30+)
+
+`amazed1`, `amused1`, `attentive1`, `attentive2`, `cheerful1`, `compassionate1`, `confused1`, `curious1`, `determined1`, `disappointed1`, `encouraging1`, `enthusiastic1`, `exhausted1`, `friendly1`, `grateful1`, `happy1`, `helpful1`, `impressed1`, `inspired1`, `interested1`, `joyful1`, `nostalgic1`, `optimistic1`, `pensive1`, `proud1`, `reassuring1`, `relieved1`, `sad1`, `surprised1`, `sympathetic1`, `thoughtful1`, `welcoming1`, `worried1`
+
+### Requirements
+
+- `media_backend="default"` (sound playback needs audio support on the robot)
+- Dataset is downloaded automatically on first use
+
+---
+
+## Hand-Crafted Emotions
+
+The SDK has no built-in emotion classes - hand-crafted emotions are created by combining antenna positions, head poses, and body rotation.
 
 ## How Emotions Work
 
