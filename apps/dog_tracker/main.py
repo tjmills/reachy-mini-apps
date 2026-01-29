@@ -5,6 +5,7 @@ Scans the room and reacts with a recorded emotion when target detected.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -395,12 +396,21 @@ def main() -> None:
                     last_reaction_time = loop_start
                     pause_event.set()  # pause detection thread
                     print(f"  Reacting: {config.reaction_emotion}!")
-                    sound = emotions.sounds.get(config.reaction_emotion)
-                    if sound is not None:
+                    if config.reaction_audio:
+                        audio_path = os.path.join(
+                            os.path.dirname(__file__), "assets", config.reaction_audio
+                        )
                         try:
-                            mini.media.play_sound(sound)
+                            mini.media.play_sound(audio_path)
                         except Exception as e:
-                            print(f"  (sound failed, continuing) {e}")
+                            print(f"  (custom sound failed, continuing) {e}")
+                    else:
+                        sound = emotions.sounds.get(config.reaction_emotion)
+                        if sound is not None:
+                            try:
+                                mini.media.play_sound(sound)
+                            except Exception as e:
+                                print(f"  (sound failed, continuing) {e}")
                     move = emotions.get(config.reaction_emotion)
                     mini.play_move(move, initial_goto_duration=1.0)
                     controller.resume_scanning()

@@ -24,6 +24,7 @@ class Config:
     endpoint_url: str | None = None  # HF Inference Endpoint URL (optional, for lower latency)
     # Reaction configuration
     reaction_emotion: str = "surprised1"  # emotion name from RecordedMoves dataset
+    reaction_audio: str | None = None  # custom audio file in assets/ (overrides emotion sound)
     scan_only_duration: float = 60.0  # seconds of scan-only after a reaction
 
     @classmethod
@@ -42,5 +43,6 @@ class Config:
             detection_hz=float(os.environ.get("DOG_TRACKER_HZ", "2.0")),
             endpoint_url=os.environ.get("DOG_TRACKER_ENDPOINT_URL"),
             reaction_emotion=os.environ.get("DOG_TRACKER_REACTION_EMOTION", "surprised1"),
+            reaction_audio=os.environ.get("DOG_TRACKER_REACTION_AUDIO"),
             scan_only_duration=float(os.environ.get("DOG_TRACKER_SCAN_ONLY_DURATION", "60.0")),
         )
