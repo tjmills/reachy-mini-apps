@@ -4,7 +4,7 @@ REMOTE_BASE ?= /home/pollen/projects
 PY_CMD ?= /opt/uv/uv run python
 PROJECT ?= dog_tracker
 # ---- Targets ----
-.PHONY: run sync logs verify-sync
+.PHONY: run sync logs verify-sync kill
 
 ## Run main.py on the robot for the given project
 run:
@@ -36,6 +36,10 @@ sync-down:
 	rsync -az --ignore-existing \
 		--exclude .git --exclude .venv --exclude __pycache__ --exclude .pytest_cache --exclude .ipynb_checkpoints \
 		$(REACHY_HOST):$(REMOTE_BASE)/$(PROJECT)/ ./
+
+## Kill the running main.py process on the robot (puts it to sleep)
+kill:
+	ssh $(REACHY_HOST) "pkill -f '$(REMOTE_BASE)/$(PROJECT)/main.py' || true"
 
 ## Tail a log file if you have one (optional; adjust path)
 logs:

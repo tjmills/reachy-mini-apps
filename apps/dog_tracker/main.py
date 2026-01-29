@@ -1,9 +1,14 @@
-"""Dog tracking app for Reachy Mini using remote HuggingFace inference."""
+"""Dog tracker app for Reachy Mini using remote HuggingFace inference.
+
+Scans the room and reacts with configurable emotion + beep when target detected.
+"""
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+
+import numpy as np
 
 
 @dataclass
@@ -64,6 +69,17 @@ def test_hf_connection(config) -> bool:
     except Exception as e:
         print(f"HF API connection FAILED: {e}")
         return False
+
+
+def play_beep(mini, frequency_hz: int, duration: float) -> None:
+    """Play a simple sine wave beep through the robot's speaker."""
+    sr = 16000
+    t = np.arange(int(sr * duration)) / sr
+    samples = (np.sin(2 * np.pi * frequency_hz * t) * 0.5).astype(np.float32)
+    mini.media.start_playing()
+    mini.media.push_audio_sample(samples)
+    time.sleep(duration + 0.1)
+    mini.media.stop_playing()
 
 
 def main() -> None:
@@ -190,105 +206,45 @@ def main() -> None:
             cv2.imwrite("./test_frame_annotated.png", frame)
             print("Saved test_frame_annotated.png with bounding box")
 
-        # Phase 3: Scanning motion test
-        import numpy as np
+        # Continuous scan + react loop
         from controller import Controller
+        from emotions import play_emotion
         from reachy_mini.utils import create_head_pose  # type: ignore
 
-        print("\n=== Phase 3: Scanning Motion Test (10 seconds) ===")
+        print(f"\n=== Scanning for '{config.target_label}' (Ctrl+C to stop) ===")
+        print(f"  Reaction: {config.reaction_emotion} emotion + {config.reaction_sound_hz}Hz beep")
+        print(f"  Scan-only after reaction: {config.scan_only_duration}s")
+
         controller = Controller(config, frame_width, frame_height)
 
-        scan_duration = 10.0
-        scan_start = time.monotonic()
-        last_status = scan_start
-
-        while time.monotonic() - scan_start < scan_duration:
-            yaw, pitch, _ = controller.update(detection=None, detection_age=2.0)
-            # Use SDK set_target with head_pose for continuous control
-            head_pose = create_head_pose(yaw=yaw, pitch=pitch, degrees=False)
-            mini.set_target(head=head_pose)
-
-            # Status every 2 seconds
-            if time.monotonic() - last_status >= 2.0:
-                print(
-                    f"  Mode: {controller.mode.value}, "
-                    f"Yaw: {np.rad2deg(yaw):.1f} deg, "
-                    f"Pitch: {np.rad2deg(pitch):.1f} deg"
-                )
-                last_status = time.monotonic()
-
-            time.sleep(1.0 / config.control_hz)
-
-        print("Phase 3 complete: Scanning motion test finished")
-
-        # Phase 4: Mock tracking test
-        print("\n=== Phase 4: Mock Tracking Test ===")
-
-        mock_positions = [
-            ("CENTER", (640, 360)),
-            ("LEFT", (200, 360)),
-            ("RIGHT", (1080, 360)),
-            ("UP", (640, 150)),
-            ("DOWN", (640, 570)),
-        ]
-
-        for name, (cx, cy) in mock_positions:
-            mock_detection = Detection(
-                label="mock",
-                score=0.99,
-                box=(cx - 50, cy - 50, cx + 50, cy + 50),
-            )
-            print(f"  Testing {name} position ({cx}, {cy})...")
-
-            test_duration = 2.0
-            test_start = time.monotonic()
-            while time.monotonic() - test_start < test_duration:
-                yaw, pitch, _ = controller.update(mock_detection, detection_age=0.0)
-                head_pose = create_head_pose(yaw=yaw, pitch=pitch, degrees=False)
-                mini.set_target(head=head_pose)
-                time.sleep(1.0 / config.control_hz)
-
-            print(f"    Result: Yaw={np.rad2deg(yaw):.1f} deg, Pitch={np.rad2deg(pitch):.1f} deg")
-
-        print("Phase 4 complete: Mock tracking test finished")
-
-        # Phase 5: Full integration - continuous tracking
-        print("\n=== Phase 5: Continuous Tracking (Ctrl+C to stop) ===")
-        print("Robot will scan when no target visible, track when target detected")
-
-        # Reset controller for clean state
-        controller = Controller(config, frame_width, frame_height)
-
-        loop_start_time = time.monotonic()
-        last_inference_time = 0.0  # When we last ran inference
-        last_good_frame_time = 0.0  # Frame capture time of last valid detection
-        last_status_time = loop_start_time
+        last_inference_time = 0.0
+        last_good_frame_time = 0.0
+        last_status_time = time.monotonic()
+        last_reaction_time = 0.0
+        detection_paused = False  # True during scan-only window
         current_detection = None
         detection_interval = 1.0 / config.detection_hz
-        consecutive_misses = 0  # Hysteresis counter
 
-        # Latency tracking for p50/p95 stats
-        latencies_ms: list[float] = []
-
-        # Debug frame output (every 3 seconds when tracking)
-        last_debug_frame_time = 0.0
-
-        # Stale detection threshold - discard results older than this
-        # Note: HF serverless can be slow (2-10s), adjust based on observed latency
+        # Stale detection threshold
         max_detection_age = 3.0  # seconds
 
         try:
             while True:
                 loop_start = time.monotonic()
 
-                # Run detection at detection_hz
-                if loop_start - last_inference_time >= detection_interval:
+                # Check if scan-only window has expired
+                if detection_paused:
+                    if (loop_start - last_reaction_time) >= config.scan_only_duration:
+                        detection_paused = False
+                        print(f"  Scan-only window ended, resuming detection")
+
+                # Only run inference when not in scan-only window
+                if not detection_paused and loop_start - last_inference_time >= detection_interval:
                     frame = mini.media.get_frame()
                     if frame is not None:
-                        # Timestamp when frame was captured (before inference)
                         frame_capture_time = time.monotonic()
 
-                        # Resize frame to reduce latency (320px for lower network overhead)
+                        # Resize frame to reduce latency
                         h, w = frame.shape[:2]
                         scale = 320 / w
                         small_frame = cv2.resize(frame, (320, int(h * scale)))
@@ -310,20 +266,15 @@ def main() -> None:
                                         threshold=config.confidence_threshold,
                                     )
                                 receipt_time = time.monotonic()
-                                latency_ms = (receipt_time - inference_start) * 1000
-                                latencies_ms.append(latency_ms)
                                 age_at_receipt = receipt_time - frame_capture_time
 
-                                # Discard stale results (inference took too long)
                                 if age_at_receipt > max_detection_age:
-                                    print(f"  Discarding stale detection ({age_at_receipt:.1f}s > {max_detection_age}s)")
+                                    pass  # Discard stale results
                                 else:
-                                    # Look for target in results
                                     found_detection = None
                                     for r in results:
                                         if r.label and r.label.lower() == config.target_label.lower():
                                             box = r.box
-                                            # Scale box back to original frame size
                                             found_detection = Detection(
                                                 label=r.label,
                                                 score=r.score,
@@ -336,53 +287,52 @@ def main() -> None:
                                             )
                                             break
 
-                                    # Update detection state
                                     if found_detection is not None:
                                         current_detection = found_detection
                                         last_good_frame_time = frame_capture_time
-                                        consecutive_misses = 0
-
-                                        # Save debug frame every 3 seconds when tracking
-                                        if loop_start - last_debug_frame_time >= 3.0:
-                                            debug_frame = frame.copy()
-                                            x1, y1, x2, y2 = found_detection.box
-                                            cv2.rectangle(debug_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                                            # Draw frame center crosshair
-                                            fx, fy = frame_width // 2, frame_height // 2
-                                            cv2.line(debug_frame, (fx - 20, fy), (fx + 20, fy), (0, 0, 255), 2)
-                                            cv2.line(debug_frame, (fx, fy - 20), (fx, fy + 20), (0, 0, 255), 2)
-                                            cv2.imwrite(f"./debug_frame_{int(loop_start)}.png", debug_frame)
-                                            print(f"  Debug: det@{found_detection.center}, center@({fx},{fy})")
-                                            last_debug_frame_time = loop_start
                                     else:
-                                        consecutive_misses += 1
+                                        current_detection = None
                             except Exception as e:
                                 print(f"  Detection error: {e}")
-                                consecutive_misses += 1
                     last_inference_time = loop_start
 
-                # Compute detection age based on when frame was captured (not receipt time)
+                # Compute detection age
                 detection_age = (
                     (loop_start - last_good_frame_time)
                     if last_good_frame_time > 0
                     else 999.0
                 )
 
-                # Update controller (hysteresis: need 3+ misses before age matters for scanning)
-                # This prevents "track → scan → track" flicker
-                effective_age = detection_age if consecutive_misses >= 3 else min(detection_age, 0.5)
-                yaw, pitch, _ = controller.update(current_detection, effective_age)
+                # Update controller
+                yaw, pitch, body_yaw, reaction_triggered = controller.update(
+                    current_detection, detection_age
+                )
+
+                # React on detection
+                if reaction_triggered:
+                    last_reaction_time = loop_start
+                    print(f"  Reacting: {config.reaction_emotion}!")
+                    play_emotion(mini, config.reaction_emotion)
+                    play_beep(mini, config.reaction_sound_hz, config.reaction_sound_duration)
+                    time.sleep(0.5)
+                    controller.resume_scanning()
+                    detection_paused = True
+                    current_detection = None
+                    last_good_frame_time = 0.0
+                    print(f"  Scanning only for {config.scan_only_duration}s...")
+                    continue
+
+                # Apply scanning motion via set_target
                 head_pose = create_head_pose(yaw=yaw, pitch=pitch, degrees=False)
-                mini.set_target(head=head_pose)
+                mini.set_target(head=head_pose, body_yaw=body_yaw)
 
                 # Status every 3 seconds
                 if loop_start - last_status_time >= 3.0:
-                    det_str = f"{current_detection.label}" if current_detection else "None"
                     print(
                         f"  Mode: {controller.mode.value}, "
-                        f"Detection: {det_str}, "
-                        f"Age: {detection_age:.1f}s, "
-                        f"Yaw: {np.rad2deg(yaw):.1f} deg"
+                        f"Yaw: {np.rad2deg(yaw):.1f}, "
+                        f"Pitch: {np.rad2deg(pitch):.1f}, "
+                        f"Body: {np.rad2deg(body_yaw):.1f}"
                     )
                     last_status_time = loop_start
 
@@ -393,18 +343,6 @@ def main() -> None:
 
         except KeyboardInterrupt:
             print("\n\nStopping tracker (Ctrl+C received)...")
-
-        # Print latency statistics
-        if latencies_ms:
-            sorted_latencies = sorted(latencies_ms)
-            n = len(sorted_latencies)
-            p50 = sorted_latencies[n // 2]
-            p95 = sorted_latencies[int(n * 0.95)] if n >= 20 else sorted_latencies[-1]
-            print(f"\nLatency stats ({n} samples):")
-            print(f"  p50: {p50:.0f}ms")
-            print(f"  p95: {p95:.0f}ms")
-            print(f"  min: {sorted_latencies[0]:.0f}ms")
-            print(f"  max: {sorted_latencies[-1]:.0f}ms")
 
         mini.goto_sleep()
         print("Dog Tracker stopped.")
