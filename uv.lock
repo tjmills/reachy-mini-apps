@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "reachy-mini-apps",
     "reachy-mini-dog-tracker",
+    "reachy-mini-hello-emotion",
     "reachy-mini-hello-motion",
     "reachy-mini-hello-vision",
     "reachy-mini-target-tracking",
@@ -1503,6 +1504,36 @@ requires-dist = [
     { name = "opencv-python" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "reachy-mini", extras = ["gstreamer"], specifier = ">=1.2.6" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
+]
+provides-extras = ["dev", "laptop", "reachy"]
+
+[[package]]
+name = "reachy-mini-hello-emotion"
+version = "0.1.0"
+source = { virtual = "apps/hello_emotion" }
+dependencies = [
+    { name = "numpy" },
+    { name = "reachy-mini" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+laptop = [
+    { name = "ipython" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "ipython", marker = "extra == 'laptop'", specifier = ">=8.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "reachy-mini", specifier = ">=1.2.13" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
 ]
 provides-extras = ["dev", "laptop", "reachy"]
