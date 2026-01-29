@@ -31,17 +31,10 @@ class ControllerState:
     current_yaw: float = 0.0
     current_pitch: float = 0.0
     current_body_yaw: float = 0.0
-    target_yaw: float = 0.0
-    target_pitch: float = 0.0
 
 
 class Controller:
     """Head motion controller for scanning and detection behaviors."""
-
-    # Rate limiting (max radians per second change) for smooth motion
-    MAX_YAW_RATE = np.deg2rad(60)  # 60 deg/sec max
-    MAX_PITCH_RATE = np.deg2rad(40)  # 40 deg/sec max
-    MAX_BODY_YAW_RATE = np.deg2rad(30)  # 30 deg/sec max
 
     # Head joint limits (radians)
     YAW_LIMIT = np.deg2rad(45)
@@ -70,8 +63,7 @@ class Controller:
             detection_age: Seconds since last valid detection
 
         Returns:
-            Tuple of (yaw, pitch, body_yaw, reaction_triggered) where reaction_triggered
-            is True when transitioning from SCANNING to DETECTED mode.
+            Tuple of (yaw, pitch, body_yaw, reaction_triggered).
         """
         # Determine mode based on detection freshness
         if detection is not None and detection_age < self.config.lost_timeout:
@@ -101,59 +93,31 @@ class Controller:
         )
 
     def _scanning_update(self) -> tuple[float, float, float, bool]:
-        """Compute scanning motion to sweep the room.
+        """Compute current scan position from sine wave.
 
-        Enhanced scanning with:
-        - Head yaw: Sinusoidal sweep (25° amplitude, 6s period)
-        - Body yaw: Sinusoidal sweep (15° amplitude, same period, slight phase offset)
-        - Pitch: Slight up/down nod (5° base + 3° variation at double frequency)
+        Called at control_hz (e.g. 30Hz). Always returns the instantaneous
+        position — no waypoint interval gating needed since set_target is
+        non-blocking.
         """
         now = time.monotonic()
-        dt = now - self.state.last_update_time
         self.state.last_update_time = now
-
         elapsed = now - self.state.scan_start_time
         phase = (2 * np.pi * elapsed) / self.config.scan_period
 
-        # Sinusoidal yaw sweep for head
         target_yaw = np.deg2rad(self.config.scan_amplitude_deg) * np.sin(phase)
-
-        # Body yaw sweep with slight phase offset for more organic motion
         target_body_yaw = np.deg2rad(self.BODY_YAW_AMPLITUDE_DEG) * np.sin(phase - 0.3)
-
-        # Pitch: looking down with slight up/down nod at double frequency
         target_pitch = np.deg2rad(
             self.PITCH_BASE_DEG + self.PITCH_VARIATION_DEG * np.sin(phase * 2)
         )
-
-        # Rate limiting for smooth motion
-        max_yaw_delta = self.MAX_YAW_RATE * dt
-        max_pitch_delta = self.MAX_PITCH_RATE * dt
-        max_body_yaw_delta = self.MAX_BODY_YAW_RATE * dt
-
-        yaw_diff = target_yaw - self.state.current_yaw
-        pitch_diff = target_pitch - self.state.current_pitch
-        body_yaw_diff = target_body_yaw - self.state.current_body_yaw
-
-        self.state.current_yaw += np.clip(yaw_diff, -max_yaw_delta, max_yaw_delta)
-        self.state.current_pitch += np.clip(pitch_diff, -max_pitch_delta, max_pitch_delta)
-        self.state.current_body_yaw += np.clip(body_yaw_diff, -max_body_yaw_delta, max_body_yaw_delta)
-
-        # Clamp to limits
-        self.state.current_body_yaw = np.clip(
-            self.state.current_body_yaw, -self.BODY_YAW_LIMIT, self.BODY_YAW_LIMIT
+        target_body_yaw = float(
+            np.clip(target_body_yaw, -self.BODY_YAW_LIMIT, self.BODY_YAW_LIMIT)
         )
 
-        # Update target state for smooth mode transitions
-        self.state.target_yaw = float(target_yaw)
-        self.state.target_pitch = float(target_pitch)
+        self.state.current_yaw = float(target_yaw)
+        self.state.current_pitch = float(target_pitch)
+        self.state.current_body_yaw = target_body_yaw
 
-        return (
-            float(self.state.current_yaw),
-            float(self.state.current_pitch),
-            float(self.state.current_body_yaw),
-            False,  # No reaction triggered during scanning
-        )
+        return (float(target_yaw), float(target_pitch), target_body_yaw, False)
 
     def resume_scanning(self) -> None:
         """Reset controller to scanning mode."""

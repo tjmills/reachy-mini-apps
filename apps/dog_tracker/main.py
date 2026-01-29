@@ -5,10 +5,15 @@ Scans the room and reacts with a recorded emotion when target detected.
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
 
 import numpy as np
+
+# Center-crop dimensions (applied to 320px-wide resized frame)
+CENTER_CROP_WIDTH = 240   # pixels
+CENTER_CROP_HEIGHT = 180  # pixels
 
 
 @dataclass
@@ -147,14 +152,25 @@ def main() -> None:
         else:
             client = InferenceClient(provider="hf-inference", token=config.hf_token)
             print("  Using HF Serverless API")
-        # Encode frame as JPEG
-        success, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        # Resize and center-crop for detection
+        h, w = frame.shape[:2]
+        test_scale = 320 / w
+        small_test = cv2.resize(frame, (320, int(h * test_scale)))
+        sh, sw = small_test.shape[:2]
+        cx, cy = sw // 2, sh // 2
+        tx1 = max(cx - CENTER_CROP_WIDTH // 2, 0)
+        tx2 = min(cx + CENTER_CROP_WIDTH // 2, sw)
+        ty1 = max(cy - CENTER_CROP_HEIGHT // 2, 0)
+        ty2 = min(cy + CENTER_CROP_HEIGHT // 2, sh)
+        cropped_test = small_test[ty1:ty2, tx1:tx2]
+
+        success, buffer = cv2.imencode(".jpg", cropped_test, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if not success:
             print("ERROR: Failed to encode frame as JPEG")
             mini.goto_sleep()
             return
         jpeg_bytes = buffer.tobytes()
-        print(f"  Encoded frame: {len(jpeg_bytes)} bytes")
+        print(f"  Encoded frame: {len(jpeg_bytes)} bytes (center-cropped)")
 
         # Run detection
         try:
@@ -178,7 +194,7 @@ def main() -> None:
             mini.goto_sleep()
             return
 
-        # Filter for target
+        # Filter for target (offset boxes back to original frame coords)
         from detector import Detection
         detection = None
         for result in results:
@@ -190,7 +206,12 @@ def main() -> None:
                 detection = Detection(
                     label=result.label,
                     score=result.score,
-                    box=(int(box.xmin), int(box.ymin), int(box.xmax), int(box.ymax)),
+                    box=(
+                        int((box.xmin + tx1) / test_scale),
+                        int((box.ymin + ty1) / test_scale),
+                        int((box.xmax + tx1) / test_scale),
+                        int((box.ymax + ty1) / test_scale),
+                    ),
                 )
                 break  # Take first match
 
@@ -236,90 +257,132 @@ def main() -> None:
 
         controller = Controller(config, frame_width, frame_height)
 
-        last_inference_time = 0.0
-        last_good_frame_time = 0.0
+        # --- Shared detection state (written by detection thread, read by main loop) ---
+        det_lock = threading.Lock()
+        det_result: Detection | None = None
+        det_frame_time: float = 0.0
+
+        # Threading events
+        stop_event = threading.Event()
+        pause_event = threading.Event()  # set = paused
+
+        def detection_loop() -> None:
+            """Background thread: capture frames and run inference."""
+            nonlocal det_result, det_frame_time
+            interval = 1.0 / config.detection_hz
+            max_age = 3.0  # discard if inference took too long
+
+            while not stop_event.is_set():
+                # Respect pause (scan-only window after reaction)
+                if pause_event.is_set():
+                    time.sleep(0.1)
+                    continue
+
+                loop_start = time.monotonic()
+
+                frame_det = mini.media.get_frame()
+                if frame_det is None:
+                    time.sleep(0.1)
+                    continue
+
+                frame_capture_time = time.monotonic()
+
+                # Resize and center-crop
+                h, w = frame_det.shape[:2]
+                scale = 320 / w
+                small = cv2.resize(frame_det, (320, int(h * scale)))
+                sh, sw = small.shape[:2]
+                cx, cy = sw // 2, sh // 2
+                x1 = max(cx - CENTER_CROP_WIDTH // 2, 0)
+                x2 = min(cx + CENTER_CROP_WIDTH // 2, sw)
+                y1 = max(cy - CENTER_CROP_HEIGHT // 2, 0)
+                y2 = min(cy + CENTER_CROP_HEIGHT // 2, sh)
+                cropped = small[y1:y2, x1:x2]
+
+                success, buffer = cv2.imencode(
+                    ".jpg", cropped, [cv2.IMWRITE_JPEG_QUALITY, 65]
+                )
+                if not success:
+                    continue
+                jpeg = buffer.tobytes()
+
+                try:
+                    if config.endpoint_url:
+                        results = run_endpoint_detection(
+                            config.endpoint_url, config.hf_token, jpeg
+                        )
+                    else:
+                        results = client.object_detection(
+                            jpeg,
+                            model=config.model,
+                            threshold=config.confidence_threshold,
+                        )
+                except Exception as e:
+                    print(f"  Detection error: {e}")
+                    continue
+
+                receipt_time = time.monotonic()
+                if (receipt_time - frame_capture_time) > max_age:
+                    continue  # stale
+
+                found = None
+                for r in results:
+                    if (
+                        r.label
+                        and r.label.lower() == config.target_label.lower()
+                        and r.score >= config.confidence_threshold
+                    ):
+                        box = r.box
+                        found = Detection(
+                            label=r.label,
+                            score=r.score,
+                            box=(
+                                int((box.xmin + x1) / scale),
+                                int((box.ymin + y1) / scale),
+                                int((box.xmax + x1) / scale),
+                                int((box.ymax + y1) / scale),
+                            ),
+                        )
+                        break
+
+                with det_lock:
+                    det_result = found
+                    if found is not None:
+                        det_frame_time = frame_capture_time
+
+                # Pace to detection_hz
+                elapsed = time.monotonic() - loop_start
+                sleep_time = max(0, interval - elapsed)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+
+        # Start detection thread
+        det_thread = threading.Thread(target=detection_loop, daemon=True)
+        det_thread.start()
+        print("  Detection thread started")
+
+        # --- Main control loop at control_hz using set_target ---
+        control_interval = 1.0 / config.control_hz
         last_status_time = time.monotonic()
         last_reaction_time = 0.0
-        detection_paused = False  # True during scan-only window
-        current_detection = None
-        detection_interval = 1.0 / config.detection_hz
-
-        # Stale detection threshold
-        max_detection_age = 3.0  # seconds
 
         try:
             while True:
                 loop_start = time.monotonic()
 
                 # Check if scan-only window has expired
-                if detection_paused:
+                if pause_event.is_set():
                     if (loop_start - last_reaction_time) >= config.scan_only_duration:
-                        detection_paused = False
+                        pause_event.clear()
                         print(f"  Scan-only window ended, resuming detection")
 
-                # Only run inference when not in scan-only window
-                if not detection_paused and loop_start - last_inference_time >= detection_interval:
-                    frame = mini.media.get_frame()
-                    if frame is not None:
-                        frame_capture_time = time.monotonic()
+                # Read latest detection from background thread
+                with det_lock:
+                    current_detection = det_result
+                    good_frame_time = det_frame_time
 
-                        # Resize frame to reduce latency
-                        h, w = frame.shape[:2]
-                        scale = 320 / w
-                        small_frame = cv2.resize(frame, (320, int(h * scale)))
-                        success, buffer = cv2.imencode(
-                            ".jpg", small_frame, [cv2.IMWRITE_JPEG_QUALITY, 65]
-                        )
-                        if success:
-                            jpeg_bytes = buffer.tobytes()
-                            try:
-                                inference_start = time.monotonic()
-                                if config.endpoint_url:
-                                    results = run_endpoint_detection(
-                                        config.endpoint_url, config.hf_token, jpeg_bytes
-                                    )
-                                else:
-                                    results = client.object_detection(
-                                        jpeg_bytes,
-                                        model=config.model,
-                                        threshold=config.confidence_threshold,
-                                    )
-                                receipt_time = time.monotonic()
-                                age_at_receipt = receipt_time - frame_capture_time
-
-                                if age_at_receipt > max_detection_age:
-                                    pass  # Discard stale results
-                                else:
-                                    found_detection = None
-                                    for r in results:
-                                        if r.label and r.label.lower() == config.target_label.lower():
-                                            box = r.box
-                                            found_detection = Detection(
-                                                label=r.label,
-                                                score=r.score,
-                                                box=(
-                                                    int(box.xmin / scale),
-                                                    int(box.ymin / scale),
-                                                    int(box.xmax / scale),
-                                                    int(box.ymax / scale),
-                                                ),
-                                            )
-                                            break
-
-                                    if found_detection is not None:
-                                        current_detection = found_detection
-                                        last_good_frame_time = frame_capture_time
-                                    else:
-                                        current_detection = None
-                            except Exception as e:
-                                print(f"  Detection error: {e}")
-                    last_inference_time = loop_start
-
-                # Compute detection age
                 detection_age = (
-                    (loop_start - last_good_frame_time)
-                    if last_good_frame_time > 0
-                    else 999.0
+                    (loop_start - good_frame_time) if good_frame_time > 0 else 999.0
                 )
 
                 # Update controller
@@ -330,6 +393,7 @@ def main() -> None:
                 # React on detection
                 if reaction_triggered:
                     last_reaction_time = loop_start
+                    pause_event.set()  # pause detection thread
                     print(f"  Reacting: {config.reaction_emotion}!")
                     sound = emotions.sounds.get(config.reaction_emotion)
                     if sound is not None:
@@ -340,13 +404,14 @@ def main() -> None:
                     move = emotions.get(config.reaction_emotion)
                     mini.play_move(move, initial_goto_duration=1.0)
                     controller.resume_scanning()
-                    detection_paused = True
-                    current_detection = None
-                    last_good_frame_time = 0.0
+                    # Clear shared detection state
+                    with det_lock:
+                        det_result = None
+                        det_frame_time = 0.0
                     print(f"  Scanning only for {config.scan_only_duration}s...")
                     continue
 
-                # Apply scanning motion via set_target
+                # Non-blocking position command
                 head_pose = create_head_pose(yaw=yaw, pitch=pitch, degrees=False)
                 mini.set_target(head=head_pose, body_yaw=body_yaw)
 
@@ -360,14 +425,16 @@ def main() -> None:
                     )
                     last_status_time = loop_start
 
-                # Sleep to maintain control rate
+                # Sleep to maintain control_hz
                 elapsed = time.monotonic() - loop_start
-                sleep_time = max(0, (1.0 / config.control_hz) - elapsed)
+                sleep_time = max(0, control_interval - elapsed)
                 time.sleep(sleep_time)
 
         except KeyboardInterrupt:
             print("\n\nStopping tracker (Ctrl+C received)...")
 
+        stop_event.set()
+        det_thread.join(timeout=2.0)
         mini.goto_sleep()
         print("Dog Tracker stopped.")
 
