@@ -15,7 +15,7 @@ import numpy as np
 # Center-crop dimensions (applied to 320px-wide resized frame)
 CENTER_CROP_WIDTH = 240   # pixels
 CENTER_CROP_HEIGHT = 180  # pixels
-
+NUM_PLAYS=3
 
 @dataclass
 class Box:
@@ -395,24 +395,23 @@ def main() -> None:
                 if reaction_triggered:
                     last_reaction_time = loop_start
                     pause_event.set()  # pause detection thread
+                    move = emotions.get(config.reaction_emotion)
                     print(f"  Reacting: {config.reaction_emotion}!")
+
                     if config.reaction_audio:
+                        # Play custom audio (non-blocking), suppress built-in emotion sound
                         audio_path = os.path.join(
                             os.path.dirname(__file__), "assets", config.reaction_audio
                         )
                         try:
-                            mini.media.play_sound(audio_path)
+                            for play in range(NUM_PLAYS):
+                                mini.media.play_sound(audio_path)
                         except Exception as e:
                             print(f"  (custom sound failed, continuing) {e}")
+                        mini.play_move(move, initial_goto_duration=1.0, sound=False)
                     else:
-                        sound = emotions.sounds.get(config.reaction_emotion)
-                        if sound is not None:
-                            try:
-                                mini.media.play_sound(sound)
-                            except Exception as e:
-                                print(f"  (sound failed, continuing) {e}")
-                    move = emotions.get(config.reaction_emotion)
-                    mini.play_move(move, initial_goto_duration=1.0)
+                        # Let play_move handle the built-in emotion sound
+                        mini.play_move(move, initial_goto_duration=1.0, sound=True)
                     controller.resume_scanning()
                     # Clear shared detection state
                     with det_lock:
