@@ -10,7 +10,12 @@ Every app directory must contain:
 - `pyproject.toml` with unique project metadata, Python 3.10 compatibility, and
   a `reachy-mini` runtime dependency
 - `README.md` describing purpose, prerequisites, and run instructions
-- an execution entry point at either `main.py` or `<package>/main.py`
+- `index.html` and `style.css` for its Hugging Face landing page
+- `<package>/__init__.py` and `<package>/main.py`
+- a `ReachyMiniApp` subclass registered under
+  `[project.entry-points."reachy_mini_apps"]`
+- README frontmatter containing `reachy_mini` and `reachy_mini_python_app`
+- hardware-independent tests for configuration and pure behavior where possible
 
 Optional app-owned content includes:
 

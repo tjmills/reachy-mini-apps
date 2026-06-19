@@ -1,16 +1,43 @@
-# hello_vision
+---
+title: Hello Vision
+emoji: 📷
+colorFrom: blue
+colorTo: cyan
+sdk: static
+pinned: false
+short_description: Capture a camera frame from Reachy Mini robustly.
+tags:
+  - reachy_mini
+  - reachy_mini_python_app
+---
 
-Minimal macOS app to verify Reachy Mini camera streaming.
+# Hello Vision
+
+A minimal camera example that relies on the SDK's automatic media backend
+selection, waits for the video pipeline to become ready, validates the frame,
+and checks that OpenCV actually wrote the output file.
+
+The app does not wake or move the robot because image capture does not require
+motion.
 
 ## Run
+
 ```bash
-uv run python apps/hello_vision/main.py --no-localhost-only --backend webrtc
+make run-local PROJECT=hello_vision
 ```
 
-## Notes
-- Requires the Reachy Mini daemon to be running.
-- For a robot on your LAN, pass `--no-localhost-only --backend webrtc`.
-- Press `q` or `Esc` to quit the window.
-- If macOS prompts for camera access, allow it for your terminal app.
-- If `--backend webrtc` fails, install GStreamer WebRTC deps (Homebrew example):
-  `brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly libnice`
+By default the image is written to `captures/reachy-mini-frame.png`, which is
+ignored by Git. Direct execution supports backend and output overrides:
+
+```bash
+uv run --directory apps/hello_vision python -m hello_vision.main \
+  --backend default \
+  --output captures/example.png \
+  --attempts 10
+```
+
+Available backends are `default`, `local`, and `webrtc`. Prefer `default`; only
+override it when diagnosing a known media transport issue.
+
+Camera capture cannot be validated in simulation. Test this example with Lite
+or Wireless hardware and ensure no other process owns the camera.

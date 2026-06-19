@@ -16,7 +16,8 @@ shift
 }
 
 if [ -f "$app_dir/main.py" ]; then
-    entrypoint=main.py
+    cd "$app_dir"
+    exec "${UV:-uv}" run python main.py "$@"
 else
     entrypoints=$(find "$app_dir" -mindepth 2 -maxdepth 2 -type f -name main.py)
     entrypoint_count=$(printf '%s\n' "$entrypoints" | grep -c .)
@@ -25,7 +26,7 @@ else
         exit 1
     }
     entrypoint=${entrypoints#"$app_dir/"}
+    package=${entrypoint%/main.py}
+    cd "$app_dir"
+    exec "${UV:-uv}" run python -m "$package.main" "$@"
 fi
-
-cd "$app_dir"
-exec "${UV:-uv}" run python "$entrypoint" "$@"

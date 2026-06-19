@@ -1,35 +1,45 @@
-# hello_emotion
+---
+title: Hello Emotion
+emoji: 🎭
+colorFrom: purple
+colorTo: pink
+sdk: static
+pinned: false
+short_description: Play synchronized recorded emotions on Reachy Mini.
+tags:
+  - reachy_mini
+  - reachy_mini_python_app
+---
 
-Play recorded emotion moves on Reachy Mini. Discovers which emotion assets are installed on the robot and plays them in sequence.
+# Hello Emotion
 
-## Usage
+Loads the official recorded-emotions dataset and plays a curated sequence using
+`ReachyMini.play_move()`. Motion and the move's associated sound are started by
+the SDK as one behavior; the app does not manually duplicate audio playback.
+
+## Run
 
 ```bash
-# Play all emotions once
-make sync && make run
-
-# Or run directly on the robot
-python main.py
-
-# List available emotions
-python main.py --list
-
-# Play specific emotions
-python main.py --only sad surprised boredom
-
-# Loop forever
-python main.py --loop
-
-# Preview without playing
-python main.py --dry-run
-
-# Adjust delay between emotions (default: 1.0s)
-python main.py --delay 2.0
-
-# Only canonical emotions (skip heuristic extras)
-python main.py --no-extras
+make run-local PROJECT=hello_emotion
 ```
 
-## Available Emotions
+Run the module directly for optional controls:
 
-amazed, anxiety, boredom, cheerful, contempt, disgusted, displeased, downcast, enthusiastic, exhausted, fear, frustrated, furious, grateful, indifferent, irritated, lonely, loving, proud, rage, relief, resigned, sad, scared, serenity, shy, surprised, thoughtful, tired, uncertain, uncomfortable
+```bash
+# List installed/cached moves without connecting to a robot
+uv run --directory apps/hello_emotion python -m hello_emotion.main --list
+
+# Play selected moves once
+uv run --directory apps/hello_emotion python -m hello_emotion.main \
+  --emotions curious1,welcoming1,cheerful1
+
+# Disable associated sounds or loop until interrupted
+uv run --directory apps/hello_emotion python -m hello_emotion.main --no-sound --loop
+```
+
+The app validates requested names, enables motors before playback, honors the
+dashboard stop event between moves, cancels playback during cleanup, and returns
+to neutral.
+
+Simulation can exercise recorded motion but cannot validate physical character
+or audio output.

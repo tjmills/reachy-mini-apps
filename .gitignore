@@ -11,6 +11,7 @@ __pycache__/
 *.so
 .Python
 build/
+apps/*/build/
 develop-eggs/
 dist/
 downloads/
@@ -23,6 +24,7 @@ sdist/
 var/
 wheels/
 *.egg-info/
+apps/*/*.egg-info/
 .installed.cfg
 *.egg
 
@@ -33,6 +35,8 @@ ENV/
 
 # The monorepo uses one lockfile at the repository root.
 apps/*/uv.lock
+apps/*/captures/
+apps/*/test_frame*.png
 
 # IDE
 .idea/

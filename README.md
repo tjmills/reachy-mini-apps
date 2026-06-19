@@ -27,6 +27,19 @@ setup procedure referenced by `AGENTS.md`.
 Application code lives under `apps/`. Use `uv` for Python environment and
 dependency management.
 
+## Included canonical examples
+
+| App | Primary pattern |
+|---|---|
+| `hello_motion` | `goto_target()` gestures plus one fixed-rate `set_target()` loop |
+| `hello_emotion` | Recorded move and synchronized sound playback |
+| `hello_vision` | Robust camera readiness and frame capture |
+| `dog_tracker` | Background inference plus single-owner reactive robot control |
+
+Every app is independently installable, registers a `reachy_mini_apps` entry
+point, includes Hugging Face app metadata and a landing page, and has
+hardware-independent unit tests.
+
 ## Monorepo commands
 
 ```bash
