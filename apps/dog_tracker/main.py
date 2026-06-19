@@ -8,18 +8,22 @@ from __future__ import annotations
 import os
 import threading
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any, cast
 
 import numpy as np
 
 # Center-crop dimensions (applied to 320px-wide resized frame)
-CENTER_CROP_WIDTH = 240   # pixels
+CENTER_CROP_WIDTH = 240  # pixels
 CENTER_CROP_HEIGHT = 180  # pixels
-NUM_PLAYS=3
+NUM_PLAYS = 3
+
 
 @dataclass
 class Box:
     """Bounding box from detection."""
+
     xmin: float
     ymin: float
     xmax: float
@@ -29,6 +33,7 @@ class Box:
 @dataclass
 class DetResult:
     """Detection result matching InferenceClient format."""
+
     label: str
     score: float
     box: Box
@@ -46,7 +51,7 @@ def run_endpoint_detection(
     Retries on 503 (endpoint scaling up from zero) with exponential backoff,
     capped at 30s between attempts. Default 12 retries ≈ ~3 min total wait.
     """
-    import requests
+    import requests  # type: ignore[import-untyped]
 
     wait = initial_wait
     for attempt in range(max_retries + 1):
@@ -85,7 +90,7 @@ def test_hf_connection(config) -> bool:
         api = HfApi(token=config.hf_token)
         # Verify token by getting user info
         user_info = api.whoami()
-        print(f"HF API connection successful!")
+        print("HF API connection successful!")
         print(f"  Authenticated as: {user_info.get('name', user_info.get('id', 'unknown'))}")
         # Verify model exists
         model_info = api.model_info(config.model)
@@ -99,8 +104,8 @@ def test_hf_connection(config) -> bool:
 def main() -> None:
     """Main entry point for dog tracker."""
     # Import inside main so file can be read without deps
-    from reachy_mini import ReachyMini  # type: ignore
     import cv2  # type: ignore
+    from reachy_mini import ReachyMini  # type: ignore
 
     from config import Config
 
@@ -175,15 +180,20 @@ def main() -> None:
 
         # Run detection
         try:
+            results: Sequence[Any]
             if config.endpoint_url:
-                results = run_endpoint_detection(
-                    config.endpoint_url, config.hf_token, jpeg_bytes
+                results = cast(
+                    Sequence[Any],
+                    run_endpoint_detection(config.endpoint_url, config.hf_token, jpeg_bytes),
                 )
             else:
-                results = client.object_detection(
-                    jpeg_bytes,
-                    model=config.model,
-                    threshold=config.confidence_threshold,
+                results = cast(
+                    Sequence[Any],
+                    client.object_detection(
+                        jpeg_bytes,
+                        model=config.model,
+                        threshold=config.confidence_threshold,
+                    ),
                 )
             print(f"  Raw API results: {len(results)} objects detected")
             for i, r in enumerate(results[:5]):  # Show first 5
@@ -191,18 +201,22 @@ def main() -> None:
         except Exception as e:
             print(f"ERROR: Object detection failed: {type(e).__name__}: {e}")
             import traceback
+
             traceback.print_exc()
             mini.goto_sleep()
             return
 
         # Filter for target (offset boxes back to original frame coords)
         from detector import Detection
+
         detection = None
         for result in results:
             if result.label is None:
                 continue
-            if (result.label.lower() == config.target_label.lower()
-                    and result.score >= config.confidence_threshold):
+            if (
+                result.label.lower() == config.target_label.lower()
+                and result.score >= config.confidence_threshold
+            ):
                 box = result.box
                 detection = Detection(
                     label=result.label,
@@ -219,7 +233,7 @@ def main() -> None:
         if detection is None:
             print(f"No '{config.target_label}' detected in frame")
         else:
-            print(f"Detection successful!")
+            print("Detection successful!")
             print(f"  Label: {detection.label}")
             print(f"  Confidence: {detection.score:.2f}")
             print(f"  Bounding box: {detection.box}")
@@ -231,15 +245,23 @@ def main() -> None:
             x_min, y_min, x_max, y_max = detection.box
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             label_text = f"{detection.label}: {detection.score:.2f}"
-            cv2.putText(frame, label_text, (x_min, y_min - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.putText(
+                frame,
+                label_text,
+                (x_min, y_min - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                2,
+            )
             cv2.imwrite("./test_frame_annotated.png", frame)
             print("Saved test_frame_annotated.png with bounding box")
 
         # Continuous scan + react loop
-        from controller import Controller
         from reachy_mini.motion.recorded_move import RecordedMoves  # type: ignore
         from reachy_mini.utils import create_head_pose  # type: ignore
+
+        from controller import Controller
 
         EMOTIONS_DATASET = "pollen-robotics/reachy-mini-emotions-library"
         print(f"\nLoading emotions from {EMOTIONS_DATASET}...")
@@ -300,23 +322,26 @@ def main() -> None:
                 y2 = min(cy + CENTER_CROP_HEIGHT // 2, sh)
                 cropped = small[y1:y2, x1:x2]
 
-                success, buffer = cv2.imencode(
-                    ".jpg", cropped, [cv2.IMWRITE_JPEG_QUALITY, 65]
-                )
+                success, buffer = cv2.imencode(".jpg", cropped, [cv2.IMWRITE_JPEG_QUALITY, 65])
                 if not success:
                     continue
                 jpeg = buffer.tobytes()
 
                 try:
+                    results: Sequence[Any]
                     if config.endpoint_url:
-                        results = run_endpoint_detection(
-                            config.endpoint_url, config.hf_token, jpeg
+                        results = cast(
+                            Sequence[Any],
+                            run_endpoint_detection(config.endpoint_url, config.hf_token, jpeg),
                         )
                     else:
-                        results = client.object_detection(
-                            jpeg,
-                            model=config.model,
-                            threshold=config.confidence_threshold,
+                        results = cast(
+                            Sequence[Any],
+                            client.object_detection(
+                                jpeg,
+                                model=config.model,
+                                threshold=config.confidence_threshold,
+                            ),
                         )
                 except Exception as e:
                     print(f"  Detection error: {e}")
@@ -375,16 +400,14 @@ def main() -> None:
                 if pause_event.is_set():
                     if (loop_start - last_reaction_time) >= config.scan_only_duration:
                         pause_event.clear()
-                        print(f"  Scan-only window ended, resuming detection")
+                        print("  Scan-only window ended, resuming detection")
 
                 # Read latest detection from background thread
                 with det_lock:
                     current_detection = det_result
                     good_frame_time = det_frame_time
 
-                detection_age = (
-                    (loop_start - good_frame_time) if good_frame_time > 0 else 999.0
-                )
+                detection_age = (loop_start - good_frame_time) if good_frame_time > 0 else 999.0
 
                 # Update controller
                 yaw, pitch, body_yaw, reaction_triggered = controller.update(
@@ -404,7 +427,7 @@ def main() -> None:
                             os.path.dirname(__file__), "assets", config.reaction_audio
                         )
                         try:
-                            for play in range(NUM_PLAYS):
+                            for _play in range(NUM_PLAYS):
                                 mini.media.play_sound(audio_path)
                         except Exception as e:
                             print(f"  (custom sound failed, continuing) {e}")

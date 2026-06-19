@@ -1147,6 +1147,22 @@ name = "reachy-mini-apps"
 version = "0.1.0"
 source = { virtual = "." }
 
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.10" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "ruff", specifier = ">=0.8" },
+]
+
 [[package]]
 name = "reachy-mini-dog-tracker"
 version = "0.1.0"
@@ -1158,6 +1174,7 @@ dependencies = [
     { name = "opencv-python" },
     { name = "python-dotenv" },
     { name = "reachy-mini", extra = ["gstreamer"] },
+    { name = "requests" },
 ]
 
 [package.optional-dependencies]
@@ -1181,6 +1198,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "reachy-mini", extras = ["gstreamer"], specifier = ">=1.2.13" },
+    { name = "requests", specifier = ">=2.31" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
 ]
 provides-extras = ["dev", "laptop", "reachy"]

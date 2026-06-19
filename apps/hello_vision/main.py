@@ -2,14 +2,15 @@
 Simple example to take a frame with Reachy Mini.
 Must be run on the robot (Wireless).
 """
+
 from __future__ import annotations
 
 import time
 
 
 def main() -> None:
-    from reachy_mini import ReachyMini  # type: ignore
     import cv2  # type: ignore
+    from reachy_mini import ReachyMini  # type: ignore
 
     # Force correct on-robot media backend
     with ReachyMini(media_backend="gstreamer") as mini:

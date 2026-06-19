@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+agents.local.md
 
 # Python
 __pycache__/
@@ -29,6 +30,9 @@ wheels/
 .venv/
 venv/
 ENV/
+
+# The monorepo uses one lockfile at the repository root.
+apps/*/uv.lock
 
 # IDE
 .idea/

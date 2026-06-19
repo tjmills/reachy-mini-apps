@@ -1,0 +1,24 @@
+# Reachy Mini Local Configuration
+
+## Setup Status
+
+Setup complete: [YES / NO]
+
+## User Environment
+
+- Robot type: [Lite / Wireless / None yet / Unknown]
+- OS: [Linux / macOS / Windows]
+- Shell: [bash / zsh / fish / PowerShell]
+- Python env tool: [uv / venv]
+- SDK checkout: ../reachy_mini
+- Additional resources path: [absolute path or None]
+- App language preference: Python; JS only when Python cannot meet the requirement
+
+## Test Context
+
+- Default test mode: [Simulation / Physical robot / Ask first]
+- Robot host: [hostname, IP, or Unknown]
+
+## Notes for Future Sessions
+
+[Keep machine-specific and user-specific context concise. Do not store secrets.]

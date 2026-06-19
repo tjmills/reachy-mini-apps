@@ -109,9 +109,7 @@ class Controller:
         target_pitch = np.deg2rad(
             self.PITCH_BASE_DEG + self.PITCH_VARIATION_DEG * np.sin(phase * 2)
         )
-        target_body_yaw = float(
-            np.clip(target_body_yaw, -self.BODY_YAW_LIMIT, self.BODY_YAW_LIMIT)
-        )
+        target_body_yaw = float(np.clip(target_body_yaw, -self.BODY_YAW_LIMIT, self.BODY_YAW_LIMIT))
 
         self.state.current_yaw = float(target_yaw)
         self.state.current_pitch = float(target_pitch)

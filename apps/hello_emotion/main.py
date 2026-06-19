@@ -12,14 +12,13 @@ from __future__ import annotations
 
 import argparse
 import time
-from typing import Iterable, List, Optional
-
+from collections.abc import Iterable
 
 EMOTIONS_DATASET = "pollen-robotics/reachy-mini-emotions-library"
 
 
-def pick_default_emotions() -> List[str]:
-    # These correspond to files present in the dataset (e.g. curious1.json/.wav, welcoming1.json, etc.).
+def pick_default_emotions() -> list[str]:
+    # These correspond to files in the dataset, such as curious1.json or welcoming1.json.
     # You can change this list to any other names in the dataset.
     return [
         "curious1",
@@ -35,7 +34,7 @@ def pick_default_emotions() -> List[str]:
     ]
 
 
-def iter_cycle(names: List[str], *, loop_forever: bool) -> Iterable[str]:
+def iter_cycle(names: list[str], *, loop_forever: bool) -> Iterable[str]:
     if loop_forever:
         while True:
             for n in names:

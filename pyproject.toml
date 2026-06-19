@@ -5,6 +5,20 @@ description = "Monorepo for Reachy Mini tutorial and demo applications"
 readme = "README.md"
 requires-python = ">=3.10,<3.11"
 
+[dependency-groups]
+dev = [
+  "mypy>=1.10",
+  "pytest>=8.0",
+  "ruff>=0.8",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["apps/*"]
+exclude = ["apps/README.md", "apps/.DS_Store"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
